@@ -78,3 +78,48 @@ func TestSetValue(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 }
+
+func TestThemes(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	c, _ := Load(p)
+	if len(c.Themes) != len(BuiltinThemes) || c.ResolveTheme().Background != 0x002b36 {
+		t.Fatalf("defaults: %d themes, bg %x", len(c.Themes), c.ResolveTheme().Background)
+	}
+	for id, spec := range BuiltinThemes {
+		if _, err := spec.Resolve(); err != nil {
+			t.Errorf("built-in %s: %v", id, err)
+		}
+	}
+	// A themes list in the file replaces the built-in one.
+	os.WriteFile(p, []byte(`{"theme": "mine", "themes": {"mine": {"name": "Mine", "foreground": "#eeeeee",
+		"background": "#101820", "cursor": "#ff8800", "palette": ["#000000","#aa0000","#00aa00","#aa5500",
+		"#0000aa","#aa00aa","#00aaaa","#aaaaaa","#555555","#ff5555","#55ff55","#ffff55","#5555ff","#ff55ff",
+		"#55ffff","#ffffff"]}}}`), 0o644)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Themes) != 1 || c.ThemeIDs()[0] != "mine" {
+		t.Fatalf("themes not replaced: %v", c.ThemeIDs())
+	}
+	th := c.ResolveTheme()
+	if th.Background != 0x101820 || th.Cursor != 0xff8800 || th.Palette[9] != 0xff5555 {
+		t.Fatalf("resolved %+v", th)
+	}
+	// Optional colours get defaults derived from the others.
+	if th.CursorText != th.Background || th.Selection == 0 {
+		t.Fatalf("derived colours %+v", th)
+	}
+	// A broken theme is reported, and the default is used meanwhile.
+	os.WriteFile(p, []byte(`{"theme": "bad", "themes": {"bad": {"name": "Bad", "foreground": "nope", "background": "#000000", "palette": []}}}`), 0o644)
+	c, err = Load(p)
+	if err == nil || !strings.Contains(err.Error(), "not a colour") || !strings.Contains(err.Error(), "palette has 0") {
+		t.Fatalf("broken theme not reported: %v", err)
+	}
+	if c.ResolveTheme().Background != 0x002b36 {
+		t.Fatal("broken theme should fall back to the default")
+	}
+	if id := NewThemeID(map[string]ThemeSpec{"my-theme": {}}, "My Theme!"); id != "my-theme-2" {
+		t.Fatalf("NewThemeID = %q", id)
+	}
+}

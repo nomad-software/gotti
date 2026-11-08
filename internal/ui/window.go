@@ -83,7 +83,10 @@ func (w *Window) applyTheme() {
 		QSplitter#gottiSplit::handle { background: %[3]s; }
 		QLineEdit#gottiSearch { background: %[1]s; color: %[2]s; border: 1px solid %[3]s; padding: 3px; }
 		QLineEdit#gottiSearch[notFound="true"] { color: #dc322f; }
-	`, bg, fg, sel))
+		QLabel#gottiHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; }
+		QLabel#gottiHeader[focused="true"] { background: %[3]s; color: %[2]s; }
+	`, bg, fg, sel, fmt.Sprintf("#%06x", mixRGB(th.Background, th.Foreground, 0.06)),
+		fmt.Sprintf("#%06x", mixRGB(th.Background, th.Foreground, 0.55))))
 }
 
 func (w *Window) allPanes() []*Pane {

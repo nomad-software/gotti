@@ -156,6 +156,7 @@ func (a *App) NewWindow(layout *LayoutFile) *Window {
 		for _, ln := range layout.Tabs {
 			w.addLayoutTab(ln)
 		}
+		w.tabs.SetCurrentIndex(0) // a layout opens on its first tab
 	} else {
 		w.NewTab("", a.defaultCmd)
 	}

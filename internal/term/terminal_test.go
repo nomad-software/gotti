@@ -397,3 +397,27 @@ func FuzzParser(f *testing.F) {
 		}
 	})
 }
+
+// A wide character that does not fit at the end of a line wraps, leaving a
+// padding cell; reflowing again must not turn that padding into a space.
+func TestReflowWidePaddingNotContent(t *testing.T) {
+	term := New(80, 4, 100)
+	feed(term, " │ wide 世界 │ emoji 🚀 │\r\n")
+	for _, w := range []int{9, 7, 5, 13, 80, 6, 62} {
+		term.Resize(w, 4)
+	}
+	term.Resize(80, 4)
+	expectScreen(t, term, " │ wide 世界 │ emoji 🚀 │", "", "", "")
+}
+
+func TestPrintWideWrapPaddingNotCopied(t *testing.T) {
+	term := New(5, 3, 10)
+	feed(term, "abcd世x")
+	expectScreen(t, term, "abcd", "世x", "")
+	top := term.buf.ScreenTopAbs()
+	if got := term.buf.TextRange(Pos{top, 0}, Pos{top + 1, 3}, false); got != "abcd世x" {
+		t.Fatalf("copied %q", got)
+	}
+	term.Resize(10, 3)
+	expectScreen(t, term, "abcd世x", "", "")
+}

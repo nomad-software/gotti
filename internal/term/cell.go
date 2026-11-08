@@ -47,6 +47,10 @@ const (
 	AttrWideCont // second half (placeholder) of a double-width character
 	AttrCluster  // Ch is an index into the grapheme cluster table
 	AttrOverline
+	// AttrWrapPad marks the blank left at the end of a line when a wide
+	// character did not fit and wrapped to the next line. It is layout,
+	// not content: reflow, copying and search skip it.
+	AttrWrapPad
 )
 
 const (

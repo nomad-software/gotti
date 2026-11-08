@@ -41,7 +41,7 @@ func (b *Buffer) LineString(i int) string {
 func appendLine(sb *strings.Builder, line []Cell, from, to int) {
 	for x := from; x < to && x < len(line); x++ {
 		c := &line[x]
-		if c.Attr&AttrWideCont != 0 {
+		if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
 			continue
 		}
 		if c.Ch == 0 {
@@ -190,7 +190,7 @@ func (b *Buffer) paragraph(i int) (string, []Pos, int) {
 		abs := b.Evicted + int64(j)
 		for x := 0; x < b.Cols; x++ {
 			c := &line[x]
-			if c.Attr&AttrWideCont != 0 {
+			if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
 				continue
 			}
 			s := " "

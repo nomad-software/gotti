@@ -1,10 +1,15 @@
-# Gotti
+# <img src="internal/appicon/appicon.png" alt="" width="40" height="40"> Gotti
 
 A GPU-rendered terminal emulator for Linux, written in Go with Qt 6 (via
 [miqt](https://github.com/mappu/miqt)) and OpenGL 3.3 core. It targets
 `TERM=xterm-256color` and implements the xterm subset that shells, vim,
 tmux, htop, less and fzf actually use, plus Terminator-style tabs, splits
 and saved layouts.
+
+![Gotti with two tabs: the first split into vim editing Go source with syntax colours beside two stacked shells, one showing bold, italic, underlined, curly-underlined, struck-through and inverse text, the 16-colour palette, a truecolor gradient, box drawing around wide CJK characters and an emoji, braille and shade blocks and an underlined hyperlink, the other a coloured directory listing; each pane has a header with its directory](docs/screenshot.png)
+
+The screenshot is drawn by `make screenshot` (needs Xvfb, ImageMagick and
+vim).
 
 ## Build and run
 
@@ -43,10 +48,14 @@ option with its default. Misspelt keys are reported but the rest of the
 file still applies, and syntax errors name the line.
 
 Most options can also be set in the **Options** dialog (right-click →
-Options…). Its General tab covers theme, font and size (any installed font, with a warning if it
-isn't monospaced), line height, padding, ligatures, bold-as-bright,
-cursor style and blinking, scrollback, copy on select, paste warning and
-OSC 52 clipboard access. Its Keyboard Shortcuts tab rebinds every action:
+Options…). Its General tab covers font and size (any installed font,
+with a warning if it isn't monospaced), line height, padding, ligatures,
+bold-as-bright, cursor style and blinking, scrollback, copy on select,
+paste warning and OSC 52 clipboard access. Its Themes tab lists the colour
+themes: pick the one to use, edit its name, colours and 16-colour palette
+with a live preview, add, duplicate or remove themes, and restore the
+built-in ones (Solarized Dark, Solarized Light, Ubuntu Ambiance). Its
+Keyboard Shortcuts tab rebinds every action:
 click a field, press the keys, or clear it to unbind. Shortcuts used by
 more than one action are reported and not saved. OK or Apply saves to
 `config.json` and applies at once. The
@@ -58,7 +67,8 @@ for new windows.
 | `font_family` | `"monospace"` | fallback and colour emoji come from Qt/fontconfig |
 | `font_size` | `11.0` | points |
 | `line_height` | `1.0` | multiplier |
-| `theme` | `"solarized-dark"` | `solarized-dark`, `solarized-light`, `ubuntu-ambiance` |
+| `theme` | `"solarized-dark"` | id of the theme to use, a key of `themes` |
+| `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection` and `selection_text` are optional |
 | `scrollback` | `10000` | lines |
 | `cursor_style` | `"block"` | `block`, `beam`, `underline` (apps may override via DECSCUSR) |
 | `cursor_blink` | `false` | allows blinking when an app requests it |
@@ -71,7 +81,7 @@ for new windows.
 | `bold_is_bright` | `false` | |
 | `word_chars` | `"-_./~:@%+#=?&"` | extra word characters for double-click |
 | `window_width`, `window_height`, `window_maximized` | `900`, `560`, `false` | saved automatically |
-| `colors` | | `{"foreground": "#…", "background": …, "cursor": …, "selection": …, "palette": [...]}` |
+| `colors` | | overrides applied on top of the selected theme: `{"foreground": "#…", "background": …, "cursor": …, "selection": …, "palette": [...]}` |
 | `keybindings` | see below | `{"copy": "ctrl+shift+x"}`, or `"none"` to unbind |
 
 ### Default keybindings
@@ -100,6 +110,10 @@ applies only to the terminal, tabs and splitters.
 Moving focus with Alt+Arrows goes to the adjacent pane on that side that
 lines up with the text cursor, as in tmux and vim, never to a pane that
 only touches at a corner.
+
+Every pane has a header showing its current directory, from the shell's
+OSC 7 report or the foreground process. The tab and window titles show the
+running program rather than titles set by programs.
 
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs

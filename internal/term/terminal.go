@@ -368,7 +368,9 @@ func (t *Terminal) printRune(r rune) {
 	if w == 2 && t.cur.X == t.cols-1 {
 		if t.Autowrap {
 			line := t.buf.Line(t.cur.Y)
-			line[t.cur.X] = t.fill()
+			pad := t.fill()
+			pad.Attr |= AttrWrapPad
+			line[t.cur.X] = pad
 			t.wrapLine()
 		} else {
 			t.cur.X = max(0, t.cols-2)

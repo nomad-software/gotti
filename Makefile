@@ -4,7 +4,7 @@ BINARY := gotti
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test fuzz bench vet icons clean
+.PHONY: build run test fuzz bench vet icons screenshot clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/gotti
@@ -33,6 +33,11 @@ vet:
 # packaging/gotti.svg. Run it again whenever the SVG changes.
 icons:
 	rsvg-convert -w 256 -h 256 packaging/gotti.svg -o internal/appicon/appicon.png
+
+# Draws the README screenshot, docs/screenshot.png, from a demo layout in a
+# virtual X server. Needs Xvfb, ImageMagick and vim.
+screenshot:
+	packaging/screenshot.sh
 
 clean:
 	rm -rf bin

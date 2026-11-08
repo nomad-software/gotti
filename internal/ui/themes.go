@@ -1,0 +1,330 @@
+package ui
+
+import (
+	"fmt"
+	"html"
+	"strings"
+
+	qt "github.com/mappu/miqt/qt6"
+
+	"gotti/internal/config"
+)
+
+// themeColorFields are the editable non-palette colours of a theme.
+var themeColorFields = []struct {
+	label    string
+	get      func(*config.ThemeSpec) *string
+	resolved func(config.Theme) uint32
+}{
+	{"Foreground", func(s *config.ThemeSpec) *string { return &s.Foreground }, func(t config.Theme) uint32 { return t.Foreground }},
+	{"Background", func(s *config.ThemeSpec) *string { return &s.Background }, func(t config.Theme) uint32 { return t.Background }},
+	{"Cursor", func(s *config.ThemeSpec) *string { return &s.Cursor }, func(t config.Theme) uint32 { return t.Cursor }},
+	{"Cursor text", func(s *config.ThemeSpec) *string { return &s.CursorText }, func(t config.Theme) uint32 { return t.CursorText }},
+	{"Selection", func(s *config.ThemeSpec) *string { return &s.Selection }, func(t config.Theme) uint32 { return t.Selection }},
+	{"Selected text", func(s *config.ThemeSpec) *string { return &s.SelectionText }, func(t config.Theme) uint32 { return t.SelText }},
+}
+
+var paletteNames = [8]string{"Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White"}
+
+// swatchStyle colours a button with c, with readable text on it.
+func swatchStyle(c uint32) string {
+	r, g, b := c>>16&0xff, c>>8&0xff, c&0xff
+	text := "#000000"
+	if 299*r+587*g+114*b < 128000 {
+		text = "#ffffff"
+	}
+	return fmt.Sprintf("QPushButton { background: %s; color: %s; border: 1px solid #808080; border-radius: 3px; padding: 2px 8px; }",
+		config.HexColor(c), text)
+}
+
+// themesTab builds the options dialog's theme page: a list of themes to
+// choose from, with an editor for the selected one. read returns the
+// edited themes and the id of the selected theme.
+func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[string]config.ThemeSpec, string)) {
+	specs := config.CloneThemes(a.cfg.Themes)
+	ids := a.cfg.ThemeIDs()
+	current := -1
+	loading := false
+
+	page = qt.NewQWidget(nil)
+	outer := qt.NewQHBoxLayout(page)
+
+	// ---- left: the list and its buttons
+	left := qt.NewQVBoxLayout(nil)
+	list := qt.NewQListWidget(page)
+	list.SetMinimumWidth(170)
+	left.AddWidget(list.QWidget)
+	addBtn := qt.NewQPushButton3("Add")
+	dupBtn := qt.NewQPushButton3("Duplicate")
+	removeBtn := qt.NewQPushButton3("Remove")
+	row := qt.NewQHBoxLayout(nil)
+	row.AddWidget(addBtn.QWidget)
+	row.AddWidget(dupBtn.QWidget)
+	row.AddWidget(removeBtn.QWidget)
+	left.AddLayout(row.QLayout)
+	restoreBtn := qt.NewQPushButton3("Restore Built-in Themes")
+	left.AddWidget(restoreBtn.QWidget)
+	outer.AddLayout2(left.QLayout, 0)
+
+	// ---- right: the editor
+	right := qt.NewQVBoxLayout(nil)
+	form := qt.NewQFormLayout(nil)
+	name := qt.NewQLineEdit(page)
+	form.AddRow3("Name:", name.QWidget)
+	colorBtns := make([]*qt.QPushButton, len(themeColorFields))
+	for i, f := range themeColorFields {
+		b := qt.NewQPushButton(page)
+		b.SetMinimumWidth(110)
+		colorBtns[i] = b
+		form.AddRow3(f.label+":", b.QWidget)
+	}
+	right.AddLayout(form.QLayout)
+
+	palBox := qt.NewQGroupBox3("Palette")
+	grid := qt.NewQGridLayout(palBox.QWidget)
+	grid.AddWidget2(qt.NewQLabel3("Normal").QWidget, 0, 0)
+	grid.AddWidget2(qt.NewQLabel3("Bright").QWidget, 1, 0)
+	palBtns := make([]*qt.QPushButton, 16)
+	for i := range palBtns {
+		b := qt.NewQPushButton(palBox.QWidget)
+		b.SetFixedSize2(30, 24)
+		label := paletteNames[i%8]
+		if i >= 8 {
+			label = "Bright " + strings.ToLower(label)
+		}
+		b.SetAccessibleName(label)
+		palBtns[i] = b
+		grid.AddWidget2(b.QWidget, i/8, 1+i%8)
+	}
+	right.AddWidget(palBox.QWidget)
+
+	preview := qt.NewQLabel(page)
+	preview.SetTextFormat(qt.RichText)
+	preview.SetMinimumHeight(110)
+	right.AddWidget(preview.QWidget)
+	note := qt.NewQLabel3("The selected theme is used when you press OK or Apply.")
+	note.SetWordWrap(true)
+	right.AddWidget(note.QWidget)
+	right.AddStretch()
+	outer.AddLayout2(right.QLayout, 1)
+
+	cur := func() *config.ThemeSpec {
+		if current < 0 || current >= len(ids) {
+			return nil
+		}
+		s := specs[ids[current]]
+		return &s
+	}
+	store := func(s *config.ThemeSpec) { specs[ids[current]] = *s }
+
+	refresh := func() {
+		s := cur()
+		if s == nil {
+			return
+		}
+		th, err := s.Resolve()
+		if err != nil {
+			preview.SetText("<i>" + html.EscapeString(err.Error()) + "</i>")
+		}
+		for i, f := range themeColorFields {
+			c := f.resolved(th)
+			label := config.HexColor(c)
+			if *f.get(s) == "" {
+				label += " (auto)"
+			}
+			colorBtns[i].SetText(label)
+			colorBtns[i].SetStyleSheet(swatchStyle(c))
+		}
+		for i, b := range palBtns {
+			b.SetStyleSheet(swatchStyle(th.Palette[i]))
+			b.SetToolTip(b.AccessibleName() + ": " + config.HexColor(th.Palette[i]))
+		}
+		if err == nil {
+			preview.SetStyleSheet(fmt.Sprintf("QLabel { background: %s; color: %s; padding: 8px; font-family: monospace; }",
+				config.HexColor(th.Background), config.HexColor(th.Foreground)))
+			preview.SetText(themePreview(th))
+		}
+	}
+	load := func(rowIdx int) {
+		current = rowIdx
+		s := cur()
+		if s == nil {
+			return
+		}
+		loading = true
+		name.SetText(s.Name)
+		loading = false
+		refresh()
+	}
+	rebuildList := func(selectID string) {
+		loading = true
+		list.Clear()
+		sel := 0
+		for i, id := range ids {
+			list.AddItem(specs[id].Name)
+			if id == selectID {
+				sel = i
+			}
+		}
+		loading = false
+		list.SetCurrentRow(sel)
+		load(sel)
+	}
+	list.OnCurrentRowChanged(func(r int) {
+		if !loading && r >= 0 {
+			load(r)
+		}
+	})
+	name.OnTextEdited(func(text string) {
+		if loading || cur() == nil {
+			return
+		}
+		s := cur()
+		s.Name = text
+		store(s)
+		list.Item(current).SetText(text)
+	})
+	pick := func(title string, initial uint32, set func(string)) {
+		init := qt.NewQColor6(config.HexColor(initial))
+		// GetColor returns a copy that miqt frees itself.
+		c := qt.QColorDialog_GetColor3(init, dlg.QWidget, title)
+		init.Delete()
+		if c.IsValid() {
+			set(c.Name())
+			refresh()
+		}
+	}
+	for i, f := range themeColorFields {
+		f := f
+		colorBtns[i].OnClicked(func() {
+			s := cur()
+			if s == nil {
+				return
+			}
+			th, _ := s.Resolve()
+			pick(f.label, f.resolved(th), func(hex string) {
+				s := cur()
+				*f.get(s) = hex
+				store(s)
+			})
+		})
+	}
+	for i, b := range palBtns {
+		i, b := i, b
+		b.OnClicked(func() {
+			s := cur()
+			if s == nil {
+				return
+			}
+			th, _ := s.Resolve()
+			pick(b.AccessibleName(), th.Palette[i], func(hex string) {
+				s := cur()
+				pal := make([]string, 16)
+				for k := range pal {
+					if k < len(s.Palette) {
+						pal[k] = s.Palette[k]
+					} else {
+						pal[k] = config.HexColor(th.Palette[k])
+					}
+				}
+				pal[i] = hex
+				s.Palette = pal
+				store(s)
+			})
+		})
+	}
+	addCopy := func(newName string) {
+		s := cur()
+		if s == nil {
+			return
+		}
+		n := *s
+		n.Name = newName
+		n.Palette = append([]string(nil), s.Palette...)
+		id := config.NewThemeID(specs, newName)
+		specs[id] = n
+		ids = append(ids, id)
+		rebuildList(id)
+		name.SetFocus()
+		name.SelectAll()
+	}
+	addBtn.OnClicked(func() { addCopy("New Theme") })
+	dupBtn.OnClicked(func() {
+		if s := cur(); s != nil {
+			addCopy(s.Name + " Copy")
+		}
+	})
+	removeBtn.OnClicked(func() {
+		if len(ids) <= 1 || cur() == nil {
+			return // at least one theme must remain
+		}
+		delete(specs, ids[current])
+		ids = append(ids[:current], ids[current+1:]...)
+		next := min(current, len(ids)-1)
+		rebuildList(ids[next])
+	})
+	restoreBtn.OnClicked(func() {
+		msg := "Restore the built-in themes? Changes made to them will be lost; your own themes are kept."
+		if qt.QMessageBox_Question(dlg.QWidget, "Restore Built-in Themes", msg) != qt.QMessageBox__Yes {
+			return
+		}
+		selected := ""
+		if current >= 0 && current < len(ids) {
+			selected = ids[current]
+		}
+		for id, spec := range config.BuiltinThemes {
+			if _, ok := specs[id]; !ok {
+				ids = append(ids, id)
+			}
+			spec.Palette = append([]string(nil), spec.Palette...)
+			specs[id] = spec
+		}
+		rebuildList(selected)
+	})
+
+	removeBtn.SetEnabled(len(ids) > 1)
+	list.OnCurrentRowChanged(func(int) { removeBtn.SetEnabled(len(ids) > 1) })
+	rebuildList(a.cfg.Theme)
+
+	read = func() (map[string]config.ThemeSpec, string) {
+		out := config.CloneThemes(specs)
+		for id, s := range out {
+			if strings.TrimSpace(s.Name) == "" {
+				s.Name = id
+				out[id] = s
+			}
+		}
+		sel := config.DefaultTheme
+		if current >= 0 && current < len(ids) {
+			sel = ids[current]
+		}
+		return out, sel
+	}
+	return page, read
+}
+
+// themePreview renders a few lines of a shell session in the theme.
+func themePreview(t config.Theme) string {
+	c := func(i int, s string) string {
+		return fmt.Sprintf(`<span style="color:%s">%s</span>`, config.HexColor(t.Palette[i]), html.EscapeString(s))
+	}
+	var b strings.Builder
+	b.WriteString(c(2, "~/gotti") + " $ ls<br>")
+	b.WriteString(c(4, "cmd") + "  " + c(4, "internal") + "  " + c(2, "build.sh") + "  README.md<br>")
+	b.WriteString(c(2, "~/gotti") + " $ git status<br>")
+	b.WriteString(c(1, "modified: main.go") + "  " + c(3, "untracked: notes") + "<br>")
+	selText := t.SelText
+	if selText == 0 {
+		selText = t.Foreground
+	}
+	fmt.Fprintf(&b, `<span style="background:%s; color:%s">selected text</span> `, config.HexColor(t.Selection), config.HexColor(selText))
+	fmt.Fprintf(&b, `<span style="background:%s; color:%s">&nbsp;</span>`, config.HexColor(t.Cursor), config.HexColor(t.CursorText))
+	b.WriteString("<br>")
+	for i := 0; i < 16; i++ {
+		fmt.Fprintf(&b, `<span style="background:%s">&nbsp;&nbsp;&nbsp;</span>`, config.HexColor(t.Palette[i]))
+		if i == 7 {
+			b.WriteString("<br>")
+		}
+	}
+	return b.String()
+}

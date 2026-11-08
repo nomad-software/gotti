@@ -61,14 +61,17 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 		startLine := len(outWrap)
 		for k := 0; k < len(para); k++ {
 			c := para[k]
-			if c.Attr&AttrWideCont != 0 {
-				continue // re-generated after its head
+			if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
+				continue // re-generated after its head / layout only
 			}
 			w := 1
 			if c.Attr&AttrWide != 0 {
 				w = 2
 			}
 			if lx+w > cols {
+				if lx < cols {
+					line[lx].Attr |= AttrWrapPad // the wide char wraps
+				}
 				emit(true)
 			}
 			if k == cursorOff {
@@ -155,7 +158,7 @@ func contentLen(l []Cell) int {
 	n := len(l)
 	for n > 0 {
 		c := &l[n-1]
-		if c.Ch != 0 || !c.Bg.IsDefault() || c.Attr&^AttrWideCont != 0 || c.Extra != 0 {
+		if c.Ch != 0 || !c.Bg.IsDefault() || c.Attr&^(AttrWideCont|AttrWrapPad) != 0 || c.Extra != 0 {
 			break
 		}
 		n--

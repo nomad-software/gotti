@@ -48,13 +48,6 @@ func (a *App) showOptions(p *Pane) {
 	// ---- appearance
 	look := qt.NewQGroupBox3("Appearance")
 	lf := qt.NewQFormLayout(look.QWidget)
-	var themeLabels, themeIDs []string
-	for _, id := range config.ThemeNames() {
-		themeLabels = append(themeLabels, config.Themes[id].Name)
-		themeIDs = append(themeIDs, id)
-	}
-	theme := newChoice(look.QWidget, themeLabels, themeIDs, cfg.Theme)
-	lf.AddRow3("Theme:", theme.box.QWidget)
 
 	// Every scalable font is offered: Qt's monospace filter relies on the
 	// font's declared spacing, which hides fonts like Iosevka Term.
@@ -136,6 +129,8 @@ func (a *App) showOptions(p *Pane) {
 
 	gl.AddStretch()
 	tabs.AddTab(general, "General")
+	themesPage, readThemes := a.themesTab(dlg)
+	tabs.AddTab(themesPage, "Themes")
 	keysPage, readKeys := a.shortcutsTab()
 	tabs.AddTab(keysPage, "Keyboard Shortcuts")
 	root.AddWidget(tabs.QWidget)
@@ -148,14 +143,13 @@ func (a *App) showOptions(p *Pane) {
 	apply := func() bool {
 		bindings, clashes := readKeys()
 		if len(clashes) > 0 {
-			tabs.SetCurrentIndex(1)
+			tabs.SetCurrentIndex(2)
 			qt.QMessageBox_Warning(dlg.QWidget, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
 				strings.Join(clashes, "\n")+"\n\nChange or clear them, then try again.")
 			return false
 		}
 		family := font.CurrentFont().Family()
 		values := map[string]any{
-			"theme":          theme.value(),
 			"font_family":    family,
 			"font_size":      math.Round(size.Value()*10) / 10,
 			"line_height":    math.Round(lineHeight.Value()*100) / 100,
@@ -170,6 +164,7 @@ func (a *App) showOptions(p *Pane) {
 			"osc52":          osc52.value(),
 			"keybindings":    bindings,
 		}
+		values["themes"], values["theme"] = readThemes()
 		if family != a.cfg.FontFamily || values["font_size"] != a.cfg.FontSize {
 			a.fontScale = 1 // an explicit size replaces any zoom
 		}

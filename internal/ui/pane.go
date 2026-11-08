@@ -80,6 +80,12 @@ type Pane struct {
 	cols, rows int
 	command    []string
 	keyTime    time.Time
+
+	// header above the terminal: current directory
+	header        *qt.QLabel
+	headerDir     string
+	program       string // foreground program, shown in tab and window titles
+	headerPending atomic.Bool
 }
 
 // NewPane creates a pane and starts its process.
@@ -96,6 +102,8 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	lay := qt.NewQVBoxLayout(p.Widget)
 	lay.SetContentsMargins(0, 0, 0, 0)
 	lay.SetSpacing(0)
+	p.setupHeader()
+	lay.AddWidget(p.header.QWidget)
 	p.searchBar = qt.NewQLineEdit(p.Widget)
 	p.searchBar.SetObjectName("gottiSearch")
 	p.searchBar.SetPlaceholderText("Search scrollback  (Enter: older, Shift+Enter: newer, Esc: close)")
@@ -124,6 +132,8 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.Cwd = cwd
 	s.OnUpdate = p.onOutput
 	s.OnExit = func() { mainthread.Start(p.onExit) }
+	p.headerDir = cwd
+	p.scheduleHeaderRefresh()
 	s.Run()
 	return p, nil
 }
@@ -148,6 +158,7 @@ func (p *Pane) onOutput() {
 	if ev&EvUI != 0 {
 		mainthread.Start(func() { p.handleEvents(ev, title, cwd, clips) })
 	}
+	p.scheduleHeaderRefresh()
 	// Synchronized output: hold redraws until the update completes (or
 	// a safety timeout passes).
 	if sync && ev&term.EvSync == 0 {
@@ -192,6 +203,7 @@ func (p *Pane) handleEvents(ev term.Event, title, cwd string, clips []term.Clipb
 	}
 	if ev&term.EvCwd != 0 {
 		p.Cwd = cwd
+		p.refreshHeader()
 	}
 	if ev&term.EvBell != 0 {
 		p.app.bell(p)
@@ -417,6 +429,7 @@ func (p *Pane) focus(in bool) {
 	if in {
 		p.app.paneFocused(p)
 	}
+	p.setHeaderFocused(in)
 	p.updateBlinkTimer()
 	p.GL.Update()
 }
@@ -968,12 +981,15 @@ func (p *Pane) cwd() string {
 }
 
 // displayTitle returns the title for tabs and the window.
+// It is the foreground program's name: titles set by programs (which
+// shells often fill with user@host:path) are kept off the title bar; the
+// directory is shown in the pane's header instead.
 func (p *Pane) displayTitle() string {
-	if p.Title != "" {
-		return p.Title
+	if p.program == "" {
+		p.program = p.S.ForegroundName()
 	}
-	if n := p.S.ForegroundName(); n != "" {
-		return n
+	if p.program != "" {
+		return p.program
 	}
 	return desktop.DisplayName
 }

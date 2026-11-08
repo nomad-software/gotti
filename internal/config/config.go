@@ -33,6 +33,9 @@ type Config struct {
 	BoldIsBright bool              `json:"bold_is_bright"`
 	Keybindings  map[string]string `json:"keybindings"`
 	Colors       *ColorOverrides   `json:"colors,omitempty"`
+	// Themes are the available colour themes by id; Theme picks one. When
+	// the file has a "themes" list it replaces the built-in one entirely.
+	Themes map[string]ThemeSpec `json:"themes"`
 
 	// Window geometry, saved when a window closes and used for new ones.
 	WindowWidth     int  `json:"window_width"`
@@ -98,7 +101,8 @@ func Default() *Config {
 		FontFamily:   "monospace",
 		FontSize:     11,
 		LineHeight:   1.0,
-		Theme:        "solarized-dark",
+		Theme:        DefaultTheme,
+		Themes:       builtinThemes(),
 		Scrollback:   10000,
 		CursorStyle:  "block",
 		CopyOnSelect: true,
@@ -140,8 +144,12 @@ func Load(path string) (*Config, error) {
 	// keybindings map with the default bindings.
 	out := *c
 	out.Keybindings = c.Keybindings
+	out.Themes = nil // a themes list in the file replaces the built-in one
 	if err := json.Unmarshal(data, &out); err != nil {
 		return c, fmt.Errorf("%s: %w", path, describeJSONError(data, err))
+	}
+	if out.Themes == nil {
+		out.Themes = c.Themes
 	}
 	// A strict second pass reports misspelt keys without rejecting the file.
 	var strictErr error
@@ -189,8 +197,15 @@ func (c *Config) normalize() {
 // Validate reports configuration problems.
 func (c *Config) Validate() error {
 	var errs []string
-	if _, ok := Themes[c.Theme]; !ok {
-		errs = append(errs, fmt.Sprintf("unknown theme %q (have %s)", c.Theme, strings.Join(ThemeNames(), ", ")))
+	if len(c.Themes) == 0 {
+		errs = append(errs, "themes is empty")
+	} else if _, ok := c.Themes[c.Theme]; !ok {
+		errs = append(errs, fmt.Sprintf("unknown theme %q (have %s)", c.Theme, strings.Join(c.ThemeIDs(), ", ")))
+	}
+	for _, id := range c.ThemeIDs() {
+		if _, err := c.Themes[id].Resolve(); err != nil {
+			errs = append(errs, err.Error())
+		}
 	}
 	switch c.CursorStyle {
 	case "block", "beam", "underline":
