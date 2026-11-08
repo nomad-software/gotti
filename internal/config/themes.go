@@ -120,7 +120,7 @@ func (s ThemeSpec) Resolve() (Theme, error) {
 	parse("cursor", s.Cursor, &t.Cursor, true)
 	t.CursorText = t.Background
 	parse("cursor_text", s.CursorText, &t.CursorText, true)
-	t.Selection = mix(t.Background, t.Foreground, 0.25)
+	t.Selection = Mix(t.Background, t.Foreground, 0.25)
 	parse("selection", s.Selection, &t.Selection, true)
 	parse("selection_text", s.SelectionText, &t.SelText, true)
 	if len(s.Palette) != 16 {
@@ -135,7 +135,8 @@ func (s ThemeSpec) Resolve() (Theme, error) {
 	return t, nil
 }
 
-func mix(a, b uint32, f float64) uint32 {
+// Mix blends colour a towards b by f (0..1); colours are 0xRRGGBB.
+func Mix(a, b uint32, f float64) uint32 {
 	ch := func(s uint) uint32 {
 		return uint32(float64(a>>s&0xff)*(1-f)+float64(b>>s&0xff)*f) << s
 	}
@@ -158,28 +159,12 @@ func (c *Config) ThemeIDs() []string {
 	return ids
 }
 
-// ResolveTheme returns the selected theme with colour overrides applied. A
-// missing or broken theme falls back to the built-in default.
+// ResolveTheme returns the selected theme. A missing or broken theme falls
+// back to the built-in default.
 func (c *Config) ResolveTheme() Theme {
 	th, err := c.Themes[c.Theme].Resolve()
 	if _, ok := c.Themes[c.Theme]; !ok || err != nil {
 		th, _ = BuiltinThemes[DefaultTheme].Resolve()
-	}
-	if o := c.Colors; o != nil {
-		set := func(dst *uint32, s string) {
-			if v, ok := term.ParseColor(s); ok {
-				*dst = v
-			}
-		}
-		set(&th.Foreground, o.Foreground)
-		set(&th.Background, o.Background)
-		set(&th.Cursor, o.Cursor)
-		set(&th.Selection, o.Selection)
-		for i, s := range o.Palette {
-			if i < 16 {
-				set(&th.Palette[i], s)
-			}
-		}
 	}
 	return th
 }

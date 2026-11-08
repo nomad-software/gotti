@@ -25,11 +25,9 @@ func TestSessionRoundTrip(t *testing.T) {
 	}
 	tm.Mu.Lock()
 	defer tm.Mu.Unlock()
-	var lines []string
-	for y := 0; y < 5; y++ {
-		lines = append(lines, tm.Buf().LineString(tm.Buf().Count()-5+y))
-	}
-	screen := strings.Join(lines, "\n")
+	b := tm.Buf()
+	top := b.ScreenTopAbs()
+	screen := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top + 4, Col: 40}, false)
 	if !strings.Contains(screen, "got:hello") || !strings.Contains(screen, "done") {
 		t.Fatalf("unexpected screen:\n%s", screen)
 	}

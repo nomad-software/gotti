@@ -44,8 +44,9 @@ prints time-to-first-frame and keypress-to-frame latencies.
 
 `~/.config/gotti/config.json` (or `$XDG_CONFIG_HOME/gotti`). Changes are
 applied live, with no restart needed. `gotti --write-config` writes every
-option with its default. Misspelt keys are reported but the rest of the
-file still applies, and syntax errors name the line.
+option with its default. Problems (misspelt keys, bad values, syntax
+errors with their line) are shown in red in every pane's header until the
+file is fixed; whatever is valid still applies.
 
 Most options can also be set in the **Options** dialog (right-click →
 Options…). Its General tab covers font and size (any installed font,
@@ -70,7 +71,7 @@ for new windows.
 | `theme` | `"solarized-dark"` | id of the theme to use, a key of `themes` |
 | `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection` and `selection_text` are optional |
 | `scrollback` | `10000` | lines |
-| `cursor_style` | `"block"` | `block`, `beam`, `underline` (apps may override via DECSCUSR) |
+| `cursor_style` | `"block"` | `block`, `beam`, `underline`; programs may choose another shape (DECSCUSR) until they reset it |
 | `cursor_blink` | `false` | allows blinking when an app requests it |
 | `copy_on_select` | `true` | primary selection is always set |
 | `paste_warning` | `"unbracketed"` | `always`, `unbracketed`, `never` |
@@ -81,7 +82,6 @@ for new windows.
 | `bold_is_bright` | `false` | |
 | `word_chars` | `"-_./~:@%+#=?&"` | extra word characters for double-click |
 | `window_width`, `window_height`, `window_maximized` | `900`, `560`, `false` | saved automatically |
-| `colors` | | overrides applied on top of the selected theme: `{"foreground": "#…", "background": …, "cursor": …, "selection": …, "palette": [...]}` |
 | `keybindings` | see below | `{"copy": "ctrl+shift+x"}`, or `"none"` to unbind |
 
 ### Default keybindings
@@ -158,6 +158,8 @@ Key implementation points:
 ## Testing
 
 ```sh
+make test                                             # all tests, with the race detector
+make vet
 go test ./...                                         # unit + golden-screen tests
 go test ./internal/term -fuzz FuzzParser              # parser fuzzing
 go test ./internal/term -bench . -run X               # throughput

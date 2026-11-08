@@ -146,6 +146,7 @@ func (t *Tab) Remove(p *Pane) bool {
 	if node == nil {
 		return len(t.Panes()) == 0
 	}
+	p.releaseGL()
 	if node == t.root {
 		t.layout.RemoveWidget(p.Widget)
 		p.Widget.DeleteLater()

@@ -58,7 +58,6 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 		}
 		i = j
 		// Re-split the paragraph at the new width.
-		startLine := len(outWrap)
 		for k := 0; k < len(para); k++ {
 			c := para[k]
 			if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
@@ -97,7 +96,6 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 			curLine, curX = len(outWrap), min(lx, cols-1)
 		}
 		emit(false)
-		_ = startLine
 	}
 
 	n := len(outWrap)

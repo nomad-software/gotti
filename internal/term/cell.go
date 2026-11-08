@@ -10,7 +10,6 @@ import "sync"
 type Color uint32
 
 const (
-	ColorDefault Color = 0
 	colorIndexed Color = 1 << 24
 	colorRGB     Color = 2 << 24
 	colorKind    Color = 0xff << 24
@@ -37,9 +36,9 @@ const (
 	AttrBold Attr = 1 << iota
 	AttrDim
 	AttrItalic
-	attrUL0 // underline style, 3 bits
-	attrUL1
-	attrUL2
+	_ // three bits holding the underline style (see Underline)
+	_
+	_
 	AttrInverse
 	AttrHidden
 	AttrStrike
@@ -83,9 +82,6 @@ type Cell struct {
 	Attr  Attr
 	Extra uint16 // index into the extras table (underline colour, hyperlink)
 }
-
-// Blank reports whether the cell holds no visible content.
-func (c *Cell) Blank() bool { return c.Ch == 0 || c.Ch == ' ' }
 
 // Extra holds rarely used per-cell data, interned so cells stay small.
 type Extra struct {

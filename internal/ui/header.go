@@ -56,9 +56,14 @@ func (p *Pane) refreshHeader() {
 	}
 }
 
-// layoutHeader sets the header text, elided from the left to fit.
+// layoutHeader sets the header text, elided to fit. While the config
+// file has a problem, the header shows it (in red) instead of the path.
 func (p *Pane) layoutHeader() {
-	text := abbreviateHome(p.headerDir)
+	text, tip, mode := abbreviateHome(p.headerDir), p.headerDir, qt.ElideLeft
+	problem := p.app.configErr != ""
+	if problem {
+		text, tip, mode = "⚠ "+p.app.configErr, p.app.configErr, qt.ElideRight
+	}
 	if text == "" {
 		text = " "
 	}
@@ -66,18 +71,27 @@ func (p *Pane) layoutHeader() {
 	defer fm.Delete()
 	// leave room for the label's horizontal padding
 	if w := p.header.Width() - 20; w > 0 {
-		text = fm.ElidedText(text, qt.ElideLeft, w)
+		text = fm.ElidedText(text, mode, w)
 	}
 	p.header.SetText(text)
-	p.header.SetToolTip(p.headerDir)
+	p.header.SetToolTip(tip)
+	if problem != p.headerProblem {
+		p.headerProblem = problem
+		p.header.SetProperty("problem", qt.NewQVariant8(problem))
+		p.repolishHeader()
+	}
+}
+
+func (p *Pane) repolishHeader() {
+	st := p.header.Style()
+	st.Unpolish(p.header.QWidget)
+	st.Polish(p.header.QWidget)
 }
 
 // setHeaderFocused highlights the header of the focused pane.
 func (p *Pane) setHeaderFocused(on bool) {
 	p.header.SetProperty("focused", qt.NewQVariant8(on))
-	st := p.header.Style()
-	st.Unpolish(p.header.QWidget)
-	st.Polish(p.header.QWidget)
+	p.repolishHeader()
 }
 
 // abbreviateHome shows paths under the home directory as ~/...

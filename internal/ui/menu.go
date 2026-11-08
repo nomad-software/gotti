@@ -50,17 +50,6 @@ func (a *App) shortcutLabel(action string) string {
 	return strings.Join(append(parts, k), "+")
 }
 
-// setOption writes a setting to the config file and applies it at once.
-func (a *App) setOption(p *Pane, key string, value any) {
-	if err := config.SetValue(a.cfgPath, key, value); err != nil {
-		qt.QMessageBox_Warning(p.Widget, desktop.DisplayName, "Could not save setting:\n"+err.Error())
-		p.refocus()
-		return
-	}
-	c, err := config.Load(a.cfgPath)
-	a.reload(c, err)
-}
-
 // menuBuilder adds actions with shortcut hints.
 type menuBuilder struct {
 	a *App

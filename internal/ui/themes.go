@@ -286,17 +286,32 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 	list.OnCurrentRowChanged(func(int) { removeBtn.SetEnabled(len(ids) > 1) })
 	rebuildList(a.cfg.Theme)
 
+	// read returns the edited themes. Built-in themes keep their ids; the
+	// user's own are stored under ids made from their current names, so a
+	// renamed copy doesn't keep the id of the theme it was copied from.
 	read = func() (map[string]config.ThemeSpec, string) {
-		out := config.CloneThemes(specs)
-		for id, s := range out {
+		edited := config.CloneThemes(specs)
+		out := map[string]config.ThemeSpec{}
+		newID := map[string]string{}
+		for _, id := range ids {
+			s := edited[id]
 			if strings.TrimSpace(s.Name) == "" {
 				s.Name = id
-				out[id] = s
+			}
+			edited[id] = s
+			if _, builtin := config.BuiltinThemes[id]; builtin {
+				out[id], newID[id] = s, id
+			}
+		}
+		for _, id := range ids {
+			if _, builtin := config.BuiltinThemes[id]; !builtin {
+				nid := config.NewThemeID(out, edited[id].Name)
+				out[nid], newID[id] = edited[id], nid
 			}
 		}
 		sel := config.DefaultTheme
 		if current >= 0 && current < len(ids) {
-			sel = ids[current]
+			sel = newID[ids[current]]
 		}
 		return out, sel
 	}

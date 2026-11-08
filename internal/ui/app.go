@@ -36,7 +36,7 @@ type App struct {
 	focused    *Pane
 	broadcast  int
 	stopWatch  func()
-	configErr  string
+	configErr  string // the config file's latest problem, shown in pane headers
 	defaultCmd []string
 }
 
@@ -54,15 +54,15 @@ func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
 // ---------------------------------------------------------------- config
 
 func (a *App) reload(c *config.Config, err error) {
+	// Problems are shown in every pane's header until the file is fixed;
+	// whatever did load is still applied (Load falls back to defaults).
+	a.configErr = ""
 	if err != nil {
+		a.configErr = err.Error()
 		fmt.Fprintln(os.Stderr, "gotti:", err)
-		if a.focused != nil {
-			a.focused.Widget.SetToolTip(err.Error())
-		}
-		// keep running with whatever parsed; Load returns defaults on syntax errors
-		if c == nil {
-			return
-		}
+	}
+	if c == nil {
+		return
 	}
 	old := a.cfg
 	a.cfg = c
@@ -73,10 +73,8 @@ func (a *App) reload(c *config.Config, err error) {
 		a.rebuildFonts()
 	}
 	for _, p := range a.allPanes() {
-		a.applyThemeTo(p)
-		p.T.Mu.Lock()
-		p.T.AllowClipboardRead = c.OSC52 == "read-write"
-		p.T.Mu.Unlock()
+		a.applyTerminalSettings(p)
+		p.layoutHeader()
 		if p.R != nil {
 			p.R.Style = a.styleFor(p)
 			p.R.Invalidate()
@@ -91,36 +89,29 @@ func (a *App) reload(c *config.Config, err error) {
 	}
 }
 
-func (a *App) applyThemeTo(p *Pane) {
+// applyTerminalSettings gives a pane's terminal the settings it holds
+// itself: theme colours, the default cursor shape and clipboard access.
+func (a *App) applyTerminalSettings(p *Pane) {
 	th := a.theme
+	cursor := map[string]int{"block": term.CursorBlock, "beam": term.CursorBeam, "underline": term.CursorUnderline}[a.cfg.CursorStyle]
 	p.T.Mu.Lock()
 	p.T.SetColors(th.Palette256(), th.Foreground, th.Background, th.Cursor)
+	p.T.SetDefaultCursor(cursor)
+	p.T.AllowClipboardRead = a.cfg.OSC52 == "read-write"
 	p.T.Mu.Unlock()
 }
 
-func (a *App) style() render.Style {
+// styleFor returns the renderer settings for a pane (padding depends on
+// the pane's screen scale).
+func (a *App) styleFor(p *Pane) render.Style {
 	th := a.theme
-	cs := map[string]int{"block": term.CursorBlock, "beam": term.CursorBeam, "underline": term.CursorUnderline}[a.cfg.CursorStyle]
+	pad := int(math.Round(float64(a.cfg.Padding) * p.dpr))
 	return render.Style{
 		SelBg: th.Selection, SelFg: th.SelText, CursorText: th.CursorText,
-		MatchBg: mixRGB(th.Background, 0xb58900, 0.55), CurrentMatchBg: 0xcb4b16,
+		MatchBg: config.Mix(th.Background, 0xb58900, 0.55), CurrentMatchBg: 0xcb4b16,
 		BoldIsBright: a.cfg.BoldIsBright, Ligatures: a.cfg.Ligatures,
-		CursorStyle: cs, CursorBlink: a.cfg.CursorBlink,
+		CursorBlink: a.cfg.CursorBlink, PadX: pad, PadY: pad,
 	}
-}
-
-func (a *App) styleFor(p *Pane) render.Style {
-	s := a.style()
-	pad := int(math.Round(float64(a.cfg.Padding) * p.dpr))
-	s.PadX, s.PadY = pad, pad
-	return s
-}
-
-func mixRGB(x, y uint32, t float64) uint32 {
-	f := func(s uint) uint32 {
-		return uint32(float64(x>>s&0xff)*(1-t)+float64(y>>s&0xff)*t) << s
-	}
-	return f(16) | f(8) | f(0)
 }
 
 // cacheFor returns the glyph cache for a device pixel ratio. A GL context

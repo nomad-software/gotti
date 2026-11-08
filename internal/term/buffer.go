@@ -46,9 +46,6 @@ func NewBuffer(cols, rows, scrollback int) *Buffer {
 // ScrollbackLen returns the number of lines above the screen.
 func (b *Buffer) ScrollbackLen() int { return b.count - b.Rows }
 
-// ScrollbackCap returns the maximum number of scrollback lines.
-func (b *Buffer) ScrollbackCap() int { return b.maxLines - b.Rows }
-
 // Count returns the number of logical lines (scrollback + screen).
 func (b *Buffer) Count() int { return b.count }
 
@@ -84,13 +81,10 @@ func (b *Buffer) RowWrapped(y int) bool {
 	return b.wrapped[b.phys(b.count-b.Rows+y)]
 }
 
-// MarkDirty flags screen row y for re-upload by the renderer.
-func (b *Buffer) MarkDirty(y int) { b.dirty[y] = true }
-
 // MarkAllDirty flags every row.
 func (b *Buffer) MarkAllDirty() { b.allDirty = true }
 
-// TakeDirty reports and clears the dirty state of row y.
+// IsDirty reports whether screen row y changed since ClearDirty.
 func (b *Buffer) IsDirty(y int) bool { return b.allDirty || b.dirty[y] }
 
 // ClearDirty resets all damage.

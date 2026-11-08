@@ -30,14 +30,6 @@ func (b *Buffer) AbsToLogical(abs int64) int {
 // ScreenTopAbs returns the absolute line number of screen row 0.
 func (b *Buffer) ScreenTopAbs() int64 { return b.Evicted + int64(b.count-b.Rows) }
 
-// LineString returns the text of logical line i (wide continuation cells
-// skipped, trailing blanks trimmed).
-func (b *Buffer) LineString(i int) string {
-	var sb strings.Builder
-	appendLine(&sb, b.LogicalLine(i), 0, b.Cols)
-	return strings.TrimRight(sb.String(), " ")
-}
-
 func appendLine(sb *strings.Builder, line []Cell, from, to int) {
 	for x := from; x < to && x < len(line); x++ {
 		c := &line[x]

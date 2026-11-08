@@ -49,9 +49,6 @@ func (w *Widget) SetIMRect(x, y, width, height int) {
 	C.gotti_glwidget_set_im_rect(w.ptr, C.int(x), C.int(y), C.int(width), C.int(height))
 }
 
-// DefaultFBO returns the framebuffer the widget renders into.
-func (w *Widget) DefaultFBO() uint32 { return uint32(C.gotti_glwidget_default_fbo(w.ptr)) }
-
 // MakeCurrent makes the widget's context current (outside paint).
 func (w *Widget) MakeCurrent() { C.gotti_glwidget_make_current(w.ptr) }
 

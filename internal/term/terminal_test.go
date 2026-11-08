@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+// LineString returns the text of logical line i, trailing blanks trimmed.
+func (b *Buffer) LineString(i int) string {
+	var sb strings.Builder
+	appendLine(&sb, b.LogicalLine(i), 0, b.Cols)
+	return strings.TrimRight(sb.String(), " ")
+}
+
 func newT(cols, rows int) *Terminal { return New(cols, rows, 100) }
 
 func feed(t *Terminal, s string) *Terminal {
@@ -420,4 +427,25 @@ func TestPrintWideWrapPaddingNotCopied(t *testing.T) {
 	}
 	term.Resize(10, 3)
 	expectScreen(t, term, "abcd世x", "", "")
+}
+
+func TestDefaultCursor(t *testing.T) {
+	term := newT(10, 2)
+	term.SetDefaultCursor(CursorBeam)
+	if term.CursorStyle != CursorBeam {
+		t.Fatal("default cursor not applied")
+	}
+	feed(term, "\x1b[4 q")
+	term.SetDefaultCursor(CursorBlock) // the program's choice wins
+	if term.CursorStyle != CursorUnderline || term.CursorBlink {
+		t.Fatalf("program choice lost: %d", term.CursorStyle)
+	}
+	feed(term, "\x1b[0 q") // back to the user's default
+	if term.CursorStyle != CursorBlock || term.CursorBlink {
+		t.Fatalf("CSI 0 SP q: %d", term.CursorStyle)
+	}
+	feed(term, "\x1b[5 q\x1bc") // a full reset also returns to the default
+	if term.CursorStyle != CursorBlock {
+		t.Fatalf("reset: %d", term.CursorStyle)
+	}
 }

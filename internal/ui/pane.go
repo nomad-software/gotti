@@ -74,7 +74,6 @@ type Pane struct {
 
 	blinkTimer *qt.QTimer
 	InGroup    bool
-	Title      string
 	Cwd        string
 	exited     bool
 	cols, rows int
@@ -86,6 +85,7 @@ type Pane struct {
 	headerDir     string
 	program       string // foreground program, shown in tab and window titles
 	headerPending atomic.Bool
+	headerProblem bool // the header is showing a config problem
 }
 
 // NewPane creates a pane and starts its process.
@@ -94,8 +94,7 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.view.Current = -1
 	cfg := a.cfg
 	p.T = term.New(80, 24, cfg.Scrollback)
-	p.T.AllowClipboardRead = cfg.OSC52 == "read-write"
-	a.applyThemeTo(p)
+	a.applyTerminalSettings(p)
 
 	p.Widget = qt.NewQWidget(nil)
 	p.Widget.SetObjectName("gottiPane")
@@ -147,16 +146,16 @@ func (p *Pane) onOutput() {
 	ev := t.TakeEvents()
 	sync := t.SyncOutput
 	since := t.SyncSince
-	var title, cwd string
+	var cwd string
 	var clips []term.ClipboardWrite
 	if ev&EvUI != 0 {
-		title, cwd = t.Title, t.Cwd
+		cwd = t.Cwd
 		clips = t.ClipboardWrites
 		t.ClipboardWrites = nil
 	}
 	t.Mu.Unlock()
 	if ev&EvUI != 0 {
-		mainthread.Start(func() { p.handleEvents(ev, title, cwd, clips) })
+		mainthread.Start(func() { p.handleEvents(ev, cwd, clips) })
 	}
 	p.scheduleHeaderRefresh()
 	// Synchronized output: hold redraws until the update completes (or
@@ -178,7 +177,7 @@ func (p *Pane) onOutput() {
 }
 
 // EvUI are the events that need main-thread handling.
-const EvUI = term.EvTitle | term.EvBell | term.EvClipboard | term.EvClipboardQuery | term.EvCwd | term.EvMouseMode | term.EvCursorStyle
+const EvUI = term.EvBell | term.EvClipboard | term.EvClipboardQuery | term.EvCwd | term.EvMouseMode | term.EvCursorStyle
 
 // requestRedraw schedules a repaint; repaints are coalesced and Qt limits
 // them to one per vsync, so a flood of output never renders per byte.
@@ -193,13 +192,9 @@ func (p *Pane) requestRedraw() {
 	})
 }
 
-func (p *Pane) handleEvents(ev term.Event, title, cwd string, clips []term.ClipboardWrite) {
+func (p *Pane) handleEvents(ev term.Event, cwd string, clips []term.ClipboardWrite) {
 	if p.exited {
 		return
-	}
-	if ev&term.EvTitle != 0 {
-		p.Title = title
-		p.app.paneTitleChanged(p)
 	}
 	if ev&term.EvCwd != 0 {
 		p.Cwd = cwd
@@ -998,6 +993,18 @@ func (p *Pane) displayTitle() string {
 func (p *Pane) refocus() {
 	p.GL.ActivateWindow()
 	p.GL.SetFocus()
+}
+
+// releaseGL frees the pane's own GL objects before its widget goes. They
+// live in the GL share group with the other panes, so they would otherwise
+// outlast the pane.
+func (p *Pane) releaseGL() {
+	if p.R == nil {
+		return
+	}
+	p.GL.MakeCurrent()
+	p.R.ReleaseGL() // the renderer stays, inert: Render does nothing now
+	p.GL.DoneCurrent()
 }
 
 func (p *Pane) close() {

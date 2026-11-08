@@ -15,7 +15,7 @@ func TestLoadAndWatch(t *testing.T) {
 	if err != nil || c.Theme != "solarized-dark" {
 		t.Fatal(c, err)
 	}
-	os.WriteFile(p, []byte(`{"theme": "ubuntu-ambiance", "font_size": 14, "keybindings": {"copy": "ctrl+alt+c"}, "colors": {"background": "#112233"}}`), 0o644)
+	os.WriteFile(p, []byte(`{"theme": "ubuntu-ambiance", "font_size": 14, "keybindings": {"copy": "ctrl+alt+c"}}`), 0o644)
 	c, err = Load(p)
 	if err != nil {
 		t.Fatal(err)
@@ -23,7 +23,7 @@ func TestLoadAndWatch(t *testing.T) {
 	if c.Theme != "ubuntu-ambiance" || c.FontSize != 14 || c.Keybindings["copy"] != "ctrl+alt+c" || c.Keybindings["paste"] != "ctrl+shift+v" {
 		t.Fatalf("%+v", c)
 	}
-	if th := c.ResolveTheme(); th.Background != 0x112233 || th.Foreground != 0xffffff {
+	if th := c.ResolveTheme(); th.Background != 0x300a24 || th.Foreground != 0xffffff {
 		t.Fatalf("%x", th.Background)
 	}
 	b := c.ParseBindings()

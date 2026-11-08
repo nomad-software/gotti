@@ -78,8 +78,8 @@ type Terminal struct {
 	ulColor   Color
 	link      uint32
 	lastPrint struct {
-		x, y        int
-		ok, zwj, ri bool
+		x, y   int
+		ok, ri bool // ri: the cell holds a lone regional indicator
 	}
 	lastChar rune
 
@@ -91,8 +91,9 @@ type Terminal struct {
 	NewlineMode    bool // LNM
 	ReverseVideo   bool
 	CursorVisible  bool
-	CursorStyle    int
-	CursorBlink    bool
+	CursorStyle    int  // shape to draw: the program's choice, else defaultCursor
+	CursorBlink    bool // the program asked for a blinking cursor
+	defaultCursor  int  // the user's preferred shape (cursor_style)
 	BracketedPaste bool
 	MouseMode      int
 	MouseSGR       bool
@@ -150,7 +151,7 @@ func (t *Terminal) reset() {
 	t.Autowrap = true
 	t.Insert, t.NewlineMode, t.ReverseVideo = false, false, false
 	t.CursorVisible = true
-	t.CursorStyle, t.CursorBlink = CursorBlock, false
+	t.CursorStyle, t.CursorBlink = t.defaultCursor, false
 	t.BracketedPaste = false
 	t.MouseMode, t.MouseSGR, t.FocusEvents = MouseOff, false, false
 	t.AltScroll, t.SyncOutput = false, false
@@ -165,6 +166,15 @@ func (t *Terminal) resetTabs() {
 	for i := 8; i < t.cols; i += 8 {
 		t.tabs[i] = true
 	}
+}
+
+// SetDefaultCursor sets the cursor shape used until a program chooses one
+// with DECSCUSR, and again after it resets it (CSI 0 SP q).
+func (t *Terminal) SetDefaultCursor(style int) {
+	if t.CursorStyle == t.defaultCursor {
+		t.CursorStyle = style // the program hasn't chosen: follow the setting
+	}
+	t.defaultCursor = style
 }
 
 // SetColors installs the theme colours (resetting OSC overrides).
@@ -321,7 +331,7 @@ func (t *Terminal) printASCII(s []byte) {
 		}
 	}
 	t.lastPrint.y = t.cur.Y
-	t.lastPrint.ok, t.lastPrint.zwj, t.lastPrint.ri = true, false, false
+	t.lastPrint.ok, t.lastPrint.ri = true, false
 }
 
 func (t *Terminal) wrapLine() {
@@ -352,7 +362,6 @@ func (t *Terminal) printRune(r rune) {
 	if lp.ok && (w == 0 || (isRegional(r) && lp.ri)) {
 		joinRI := isRegional(r) && lp.ri
 		t.appendToCell(lp.x, lp.y, r)
-		lp.zwj = r == 0x200d
 		lp.ri = false
 		if joinRI {
 			t.widenLast()
@@ -396,7 +405,6 @@ func (t *Terminal) printRune(r rune) {
 	}
 	t.buf.dirty[t.cur.Y] = true
 	lp.x, lp.y, lp.ok = x, t.cur.Y, true
-	lp.zwj = false
 	lp.ri = isRegional(r)
 	t.lastChar = r
 	if x+w >= t.cols {
@@ -1036,14 +1044,16 @@ func (t *Terminal) csiInter(inter, final byte) {
 	case inter == ' ' && final == 'q': // DECSCUSR
 		n := ps.Raw(0, 0)
 		switch n {
-		case 0, 1, 2:
+		case 0: // back to the user's default
+			t.CursorStyle = t.defaultCursor
+		case 1, 2:
 			t.CursorStyle = CursorBlock
 		case 3, 4:
 			t.CursorStyle = CursorUnderline
 		case 5, 6:
 			t.CursorStyle = CursorBeam
 		}
-		t.CursorBlink = n == 0 || n%2 == 1
+		t.CursorBlink = n%2 == 1
 		t.events |= EvCursorStyle
 	case inter == '!' && final == 'p':
 		t.softReset()

@@ -284,7 +284,7 @@ func (t *Terminal) step(b byte) {
 			}
 			p.state = sCSIParam
 		case b == ';' || b == ':':
-			p.pushParam(false)
+			p.pushParam()
 			p.nextSub = b == ':'
 			p.state = sCSIParam
 		case b >= '<' && b <= '?':
@@ -367,7 +367,7 @@ func (t *Terminal) step(b byte) {
 			}
 			p.state = sDCSParam
 		case b == ';' || b == ':':
-			p.pushParam(false)
+			p.pushParam()
 			p.state = sDCSParam
 		case b >= '<' && b <= '?':
 			if p.state == sDCSEntry {
@@ -409,7 +409,7 @@ func (t *Terminal) step(b byte) {
 	}
 }
 
-func (p *parser) pushParam(_ bool) {
+func (p *parser) pushParam() {
 	if p.params.N < maxParams {
 		p.params.V[p.params.N] = p.cur
 		p.params.Sub[p.params.N] = p.nextSub
@@ -421,6 +421,6 @@ func (p *parser) pushParam(_ bool) {
 
 func (p *parser) finishParam() {
 	if p.cur >= 0 || p.params.N > 0 || p.nextSub {
-		p.pushParam(false)
+		p.pushParam()
 	}
 }

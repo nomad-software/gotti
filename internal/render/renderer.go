@@ -63,7 +63,6 @@ type Style struct {
 	CurrentMatchBg uint32
 	BoldIsBright   bool
 	Ligatures      bool
-	CursorStyle    int  // default style when the app hasn't set one
 	CursorBlink    bool // allow blinking
 	PadX, PadY     int
 }
@@ -95,22 +94,21 @@ type Renderer struct {
 	cacheGen   int
 
 	// snapshot of terminal state
-	palette          [256]uint32
-	defFg, defBg     uint32
-	cursorColor      uint32
-	reverse          bool
-	curX, curY       int // cursor row in view coordinates (-1 hidden)
-	curVisible       bool
-	curStyle         int
-	curBlink         bool
-	topAbs           int64
-	screenTopAbs     int64
-	scrollbackLen    int
-	view             View
-	lastCurY         int
-	lastPreedit      string
-	lastSigCursor    [5]int
-	pendingFullClear bool
+	palette       [256]uint32
+	defFg, defBg  uint32
+	cursorColor   uint32
+	reverse       bool
+	curX, curY    int // cursor row in view coordinates (-1 hidden)
+	curVisible    bool
+	curStyle      int
+	curBlink      bool
+	topAbs        int64
+	screenTopAbs  int64
+	scrollbackLen int
+	view          View
+	lastCurY      int
+	lastPreedit   string
+	lastSigCursor [5]int
 }
 
 // NewRenderer creates a renderer; InitGL must be called with a current context.
@@ -697,8 +695,6 @@ func (r *Renderer) buildRow(y int) {
 		}
 		x += wcells - 1
 	}
-	// cursor beyond drawn content (e.g. on an empty cell at line end)
-	_ = nr
 }
 
 func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8, fg uint32) (int, Sprite) {
@@ -718,8 +714,8 @@ func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8, fg uint32) (
 		if !match {
 			continue
 		}
-		id := r.Cache.ligatureID(cand)
-		s, ok := r.Cache.get(glyphKey{ch: id, kind: kindLigature, style: style, cells: uint8(n)}, func() string { return cand })
+		id := r.Cache.textID(cand)
+		s, ok := r.Cache.get(glyphKey{ch: id, kind: kindText, style: style, cells: uint8(n)}, func() string { return cand })
 		if ok {
 			return n, s
 		}
@@ -771,7 +767,7 @@ func (r *Renderer) buildOverlay() {
 			rs := []rune(g)
 			k := glyphKey{ch: rs[0], kind: kindRune, cells: uint8(gw)}
 			if len(rs) > 1 {
-				k = glyphKey{ch: r.Cache.ligatureID(g), kind: kindLigature, cells: uint8(gw)}
+				k = glyphKey{ch: r.Cache.textID(g), kind: kindText, cells: uint8(gw)}
 			}
 			if s, ok := r.Cache.get(k, func() string { return g }); ok && ng < len(gov) {
 				gov[ng] = glyphInst{X: int16(r.Style.PadX + x*cw + int(s.OffX)), Y: int16(py + int(s.OffY)), W: s.W, H: s.H, U: s.X, V: s.Y, Color: rgba(r.defFg, 255)}

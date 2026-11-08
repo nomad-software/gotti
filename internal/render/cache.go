@@ -12,7 +12,7 @@ const (
 	kindRune glyphKind = iota
 	kindCluster
 	kindDecoration
-	kindLigature
+	kindText // a string drawn as one sprite: a ligature, or IME preedit text
 )
 
 type glyphKey struct {
@@ -39,14 +39,14 @@ type GlyphCache struct {
 	m     map[glyphKey]Sprite
 	// Gen changes whenever cached sprites are invalidated.
 	Gen       int
-	ligatures []string
-	ligIndex  map[string]rune
+	texts     []string        // strings drawn as kindText sprites, by id
+	textIndex map[string]rune // and their ids
 	maxSize   int
 }
 
 // NewGlyphCache creates a cache for fonts. A GL context must be current.
 func NewGlyphCache(fonts *FontSet) *GlyphCache {
-	c := &GlyphCache{Fonts: fonts, m: map[glyphKey]Sprite{}, ligIndex: map[string]rune{}}
+	c := &GlyphCache{Fonts: fonts, m: map[glyphKey]Sprite{}, textIndex: map[string]rune{}}
 	var maxTex int32
 	gl.GetIntegerv(gl.MAX_TEXTURE_SIZE, &maxTex)
 	c.maxSize = int(min(maxTex, 8192))
@@ -84,18 +84,14 @@ func (c *GlyphCache) reset() {
 	c.Gen++
 }
 
-// Delete releases the texture.
-func (c *GlyphCache) Delete() {
-	gl.DeleteTextures(1, &c.tex)
-}
-
-func (c *GlyphCache) ligatureID(s string) rune {
-	if id, ok := c.ligIndex[s]; ok {
+// textID returns the id of a kindText sprite for s.
+func (c *GlyphCache) textID(s string) rune {
+	if id, ok := c.textIndex[s]; ok {
 		return id
 	}
-	id := rune(len(c.ligatures))
-	c.ligatures = append(c.ligatures, s)
-	c.ligIndex[s] = id
+	id := rune(len(c.texts))
+	c.texts = append(c.texts, s)
+	c.textIndex[s] = id
 	return id
 }
 

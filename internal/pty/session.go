@@ -45,7 +45,6 @@ var bufPool = sync.Pool{New: func() any { b := make([]byte, 0, 512); return &b }
 type Options struct {
 	Command []string // nil: user's shell
 	Dir     string
-	Env     []string // extra variables
 	Cols    int
 	Rows    int
 }
@@ -81,7 +80,6 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 		env = append(env, e)
 	}
 	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=gotti", "TERM_PROGRAM_VERSION=1.0")
-	env = append(env, o.Env...)
 	cmd.Env = env
 	f, err := cpty.StartWithSize(cmd, &cpty.Winsize{Cols: uint16(o.Cols), Rows: uint16(o.Rows)})
 	if err != nil {
@@ -208,9 +206,6 @@ func (s *Session) Close() {
 	}
 	s.finish()
 }
-
-// Exited reports whether the session has ended.
-func (s *Session) Exited() bool { return s.closed.Load() }
 
 // Pid returns the child process id.
 func (s *Session) Pid() int {

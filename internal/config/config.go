@@ -32,7 +32,6 @@ type Config struct {
 	WordChars    string            `json:"word_chars"`
 	BoldIsBright bool              `json:"bold_is_bright"`
 	Keybindings  map[string]string `json:"keybindings"`
-	Colors       *ColorOverrides   `json:"colors,omitempty"`
 	// Themes are the available colour themes by id; Theme picks one. When
 	// the file has a "themes" list it replaces the built-in one entirely.
 	Themes map[string]ThemeSpec `json:"themes"`
@@ -41,15 +40,6 @@ type Config struct {
 	WindowWidth     int  `json:"window_width"`
 	WindowHeight    int  `json:"window_height"`
 	WindowMaximized bool `json:"window_maximized"`
-}
-
-// ColorOverrides lets users tweak the active theme.
-type ColorOverrides struct {
-	Foreground string   `json:"foreground,omitempty"`
-	Background string   `json:"background,omitempty"`
-	Cursor     string   `json:"cursor,omitempty"`
-	Selection  string   `json:"selection,omitempty"`
-	Palette    []string `json:"palette,omitempty"`
 }
 
 // DefaultKeybindings maps actions to key chords.

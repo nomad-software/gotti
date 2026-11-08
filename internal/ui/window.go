@@ -58,6 +58,7 @@ func newWindow(a *App) *Window {
 		w.saveGeometry()
 		for _, p := range w.allPanes() {
 			p.exited = true
+			p.releaseGL()
 			p.S.Close()
 		}
 		super(ev)
@@ -85,8 +86,9 @@ func (w *Window) applyTheme() {
 		QLineEdit#gottiSearch[notFound="true"] { color: #dc322f; }
 		QLabel#gottiHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; }
 		QLabel#gottiHeader[focused="true"] { background: %[3]s; color: %[2]s; }
-	`, bg, fg, sel, fmt.Sprintf("#%06x", mixRGB(th.Background, th.Foreground, 0.06)),
-		fmt.Sprintf("#%06x", mixRGB(th.Background, th.Foreground, 0.55))))
+		QLabel#gottiHeader[problem="true"] { color: #dc322f; }
+	`, bg, fg, sel, fmt.Sprintf("#%06x", config.Mix(th.Background, th.Foreground, 0.06)),
+		fmt.Sprintf("#%06x", config.Mix(th.Background, th.Foreground, 0.55))))
 }
 
 func (w *Window) allPanes() []*Pane {

@@ -40,7 +40,6 @@ protected:
         case QEvent::MouseButtonPress: case QEvent::MouseButtonRelease:
         case QEvent::MouseButtonDblClick: case QEvent::MouseMove: case QEvent::Wheel:
         case QEvent::FocusIn: case QEvent::FocusOut: case QEvent::InputMethod:
-        case QEvent::Enter: case QEvent::Leave:
             if (gottiEvent(handle, e)) { e->accept(); return true; }
             break;
         default:
@@ -68,9 +67,6 @@ void* gotti_glwidget_new(uintptr_t handle, void* parent) {
 void gotti_glwidget_set_im_rect(void* w, int x, int y, int width, int height) {
     auto* g = static_cast<GottiGL*>(static_cast<QWidget*>(w));
     g->setIMRect(QRect(x, y, width, height));
-}
-unsigned int gotti_glwidget_default_fbo(void* w) {
-    return static_cast<GottiGL*>(static_cast<QWidget*>(w))->defaultFramebufferObject();
 }
 void gotti_glwidget_make_current(void* w) { static_cast<GottiGL*>(static_cast<QWidget*>(w))->makeCurrent(); }
 void gotti_glwidget_done_current(void* w) { static_cast<GottiGL*>(static_cast<QWidget*>(w))->doneCurrent(); }
