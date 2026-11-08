@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Gotti
+GenericName=Terminal
+Comment=GPU-rendered terminal emulator with tabs and split panes
+Exec=gotti
+Icon=gotti
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;terminal;
+Terminal=false
+StartupWMClass=gotti
