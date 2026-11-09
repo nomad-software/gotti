@@ -28,8 +28,45 @@ var (
 	ProcessStart   = time.Now()
 	debugStartup   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "startup")
 	debugLatency   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "latency")
+	debugFrames    = strings.Contains(os.Getenv("TERMITE_DEBUG"), "frames")
 	firstFrameDone bool
 )
+
+// frameStats gathers paint times for TERMITE_DEBUG=frames. Each paint ends
+// with glFinish so the GPU's (or llvmpipe's) work is counted, and a summary
+// is printed from paint about once a second: no timer runs.
+type frameStats struct {
+	since        time.Time
+	n, instances int
+	total, worst time.Duration
+}
+
+var frames frameStats
+
+func recordFrame(d time.Duration, instances int) {
+	s := &frames
+	if s.since.IsZero() {
+		s.since = time.Now()
+	}
+	s.n++
+	s.total += d
+	s.worst = max(s.worst, d)
+	s.instances += instances
+	if time.Since(s.since) >= time.Second {
+		FlushFrameStats()
+	}
+}
+
+// FlushFrameStats prints the frames gathered since the last summary
+// (TERMITE_DEBUG=frames); main calls it on exit for the last part second.
+func FlushFrameStats() {
+	s := &frames
+	if s.n > 0 {
+		fmt.Fprintf(os.Stderr, "termite: %d frames, avg %.2f ms, max %.2f ms, %d instances/frame\n",
+			s.n, float64(s.total.Microseconds())/1000/float64(s.n), float64(s.worst.Microseconds())/1000, s.instances/s.n)
+	}
+	*s = frameStats{since: time.Now()}
+}
 
 const (
 	selChar = iota
@@ -57,6 +94,11 @@ type Pane struct {
 	sbBase        int64
 	sbSetting     bool
 	redrawPending atomic.Bool
+	// nextFrame is the earliest time (Unix ns) output may repaint again,
+	// one refresh interval after the last paint, and frameInterval that
+	// interval. See requestRedraw.
+	nextFrame     atomic.Int64
+	frameInterval time.Duration
 	syncTimer     *time.Timer
 
 	// selection
@@ -194,17 +236,27 @@ func (p *Pane) onOutput() {
 // EvUI are the events that need main-thread handling.
 const EvUI = term.EvBell | term.EvClipboard | term.EvClipboardQuery | term.EvCwd | term.EvMouseMode | term.EvCursorStyle
 
-// requestRedraw schedules a repaint; repaints are coalesced and Qt limits
-// them to one per vsync, so a flood of output never renders per byte.
+// requestRedraw schedules a repaint after output. Requests are coalesced,
+// and paced to the screen's refresh rate: a flood of output never renders
+// per chunk, and frames that could never be shown don't take CPU from the
+// parser even where vsync doesn't throttle painting. The first output after
+// a pause paints at once, so typing isn't delayed.
 func (p *Pane) requestRedraw() {
 	if p.redrawPending.Swap(true) {
 		return
 	}
-	mainthread.Start(func() {
-		if !p.exited {
-			p.GL.Update()
-		}
-	})
+	update := func() {
+		mainthread.Start(func() {
+			if !p.exited {
+				p.GL.Update()
+			}
+		})
+	}
+	if wait := time.Until(time.Unix(0, p.nextFrame.Load())); wait > 0 {
+		time.AfterFunc(wait, update)
+		return
+	}
+	update()
 }
 
 func (p *Pane) handleEvents(ev term.Event, cwd string, clips []term.ClipboardWrite) {
@@ -266,6 +318,10 @@ func (p *Pane) initGL() {
 		glInitialized = true
 	}
 	p.dpr = p.GL.DevicePixelRatioF()
+	p.frameInterval = time.Second / 60
+	if hz := p.GL.Screen().RefreshRate(); hz >= 30 {
+		p.frameInterval = time.Duration(float64(time.Second) / hz)
+	}
 	p.cache = p.app.cacheFor(p.dpr)
 	if p.R == nil {
 		p.R = render.NewRenderer(p.cache)
@@ -306,7 +362,12 @@ func (p *Pane) updateGridSize() {
 }
 
 func (p *Pane) paint() {
+	var start time.Time
+	if debugFrames {
+		start = time.Now()
+	}
 	p.redrawPending.Store(false)
+	p.nextFrame.Store(time.Now().Add(p.frameInterval).UnixNano())
 	if p.R == nil {
 		return
 	}
@@ -332,6 +393,10 @@ func (p *Pane) paint() {
 	p.updateScrollbar(oldest, bottom)
 	p.view.Dirty, p.view.CursorDirty = false, false
 	p.R.Render()
+	if debugFrames {
+		gl.Finish()
+		recordFrame(time.Since(start), p.R.Drawn)
+	}
 	if debugStartup && !firstFrameDone {
 		firstFrameDone = true
 		fmt.Fprintf(os.Stderr, "termite: first frame after %v\n", time.Since(ProcessStart))

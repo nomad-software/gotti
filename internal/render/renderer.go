@@ -86,13 +86,24 @@ type Renderer struct {
 	rowAbs     []int64
 	rowDirty   []bool
 	allDirty   bool
-	rectSlot   int
-	glyphSlot  int
-	rects      []rectInst
-	glyphs     []glyphInst
-	gpuRects   int // capacity allocated on the GPU (instances)
-	gpuGlyphs  int
-	cacheGen   int
+	// Each row builds into a fixed slot of rects and glyphs, rebuilt only
+	// when the row is damaged; rowRects and rowGlyphs count what it used.
+	// Every frame the used parts are packed into packedRects/packedGlyphs,
+	// so the GPU draws only real instances, never empty slots.
+	rectSlot     int
+	glyphSlot    int
+	rects        []rectInst
+	glyphs       []glyphInst
+	rowRects     []int // per row, then the overlay last
+	rowGlyphs    []int
+	packedRects  []rectInst
+	packedGlyphs []glyphInst
+	gpuRects     int // buffer capacity allocated on the GPU (instances)
+	gpuGlyphs    int
+
+	// Drawn counts the instances the last frame drew, for TERMITE_DEBUG.
+	Drawn    int
+	cacheGen int
 
 	// snapshot of terminal state
 	palette       [256]uint32
@@ -151,6 +162,8 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
 		r.glyphSlot = cols*3 + 4
 		r.rects = make([]rectInst, rows*r.rectSlot+overlayRects)
 		r.glyphs = make([]glyphInst, rows*r.glyphSlot+cols*2+8)
+		r.rowRects = make([]int, rows+1)
+		r.rowGlyphs = make([]int, rows+1)
 		r.allDirty = true
 	}
 	buf := t.Buf()
@@ -529,9 +542,8 @@ func (r *Renderer) buildRow(y int) {
 	cols := r.cols
 	rects := r.rects[y*r.rectSlot : (y+1)*r.rectSlot]
 	glyphs := r.glyphs[y*r.glyphSlot : (y+1)*r.glyphSlot]
-	clear(rects)
-	clear(glyphs)
 	nr, ng := 0, 0
+	defer func() { r.rowRects[y], r.rowGlyphs[y] = nr, ng }()
 	line := r.cells[y*cols : (y+1)*cols]
 	abs := r.rowAbs[y]
 	py := r.Style.PadY + y*ch
@@ -756,8 +768,8 @@ func (r *Renderer) buildOverlay() {
 	cw, ch := fs.CellW, fs.CellH
 	base := r.rows * r.rectSlot
 	ov := r.rects[base:]
-	clear(ov)
-	n := 0
+	n, ng := 0, 0
+	defer func() { r.rowRects[r.rows], r.rowGlyphs[r.rows] = n, ng }()
 	add := func(x, y, w, h int, c uint32) {
 		if n < len(ov) {
 			ov[n] = rectInst{int16(x), int16(y), int16(w), int16(h), c}
@@ -773,13 +785,11 @@ func (r *Renderer) buildOverlay() {
 	}
 	gbase := r.rows * r.glyphSlot
 	gov := r.glyphs[gbase:]
-	clear(gov)
 	if r.view.Preedit != "" && r.curY >= 0 {
 		py := r.Style.PadY + r.curY*ch
 		x := r.curX
 		w := term.StringWidth(r.view.Preedit)
 		add(r.Style.PadX+x*cw, py, w*cw, ch, rgba(r.defBg, 255))
-		ng := 0
 		for _, g := range graphemes(r.view.Preedit) {
 			gw := max(1, term.StringWidth(g))
 			if x+gw > r.cols {
@@ -859,7 +869,7 @@ func (r *Renderer) Render() {
 	gl.UseProgram(r.progRect)
 	gl.Uniform2f(r.uVPRect, float32(r.fbW), float32(r.fbH))
 	gl.BindVertexArray(r.vaoRect)
-	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, int32(len(r.rects)))
+	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, int32(len(r.packedRects)))
 
 	tex, size := r.Cache.Texture()
 	gl.UseProgram(r.progGlyph)
@@ -869,49 +879,44 @@ func (r *Renderer) Render() {
 	gl.BindTexture(gl.TEXTURE_2D, tex)
 	gl.Uniform1i(r.uAtlas, 0)
 	gl.BindVertexArray(r.vaoGlyph)
-	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, int32(len(r.glyphs)))
+	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, int32(len(r.packedGlyphs)))
+	r.Drawn = len(r.packedRects) + len(r.packedGlyphs)
 	gl.BindVertexArray(0)
 	gl.UseProgram(0)
 }
 
-// upload sends changed rows (and the overlay) to the GPU.
+// upload packs the instances in use, row by row and then the overlay, and
+// sends them to the GPU. Only real instances are copied and drawn: a row
+// uses a fraction of its slot, and empty slots would otherwise cost the
+// GPU (and above all a software renderer) as much as full ones.
 func (r *Renderer) upload() {
-	const rs, gs = int(unsafe.Sizeof(rectInst{})), int(unsafe.Sizeof(glyphInst{}))
-	full := r.gpuRects != len(r.rects) || r.gpuGlyphs != len(r.glyphs)
+	r.packedRects = r.packedRects[:0]
+	r.packedGlyphs = r.packedGlyphs[:0]
+	for y := 0; y <= r.rows; y++ { // the overlay is row r.rows
+		k := y * r.rectSlot
+		r.packedRects = append(r.packedRects, r.rects[k:k+r.rowRects[y]]...)
+		k = y * r.glyphSlot
+		r.packedGlyphs = append(r.packedGlyphs, r.glyphs[k:k+r.rowGlyphs[y]]...)
+	}
 	gl.BindBuffer(gl.ARRAY_BUFFER, r.rectVBO)
-	if full {
-		gl.BufferData(gl.ARRAY_BUFFER, len(r.rects)*rs, gl.Ptr(r.rects), gl.DYNAMIC_DRAW)
-		r.gpuRects = len(r.rects)
-	} else {
-		r.uploadRanges(r.rectSlot, rs, unsafe.Pointer(&r.rects[0]), len(r.rects))
-	}
+	r.gpuRects = uploadInstances(r.packedRects, r.gpuRects, cap(r.packedRects))
 	gl.BindBuffer(gl.ARRAY_BUFFER, r.glyVBO)
-	if full {
-		gl.BufferData(gl.ARRAY_BUFFER, len(r.glyphs)*gs, gl.Ptr(r.glyphs), gl.DYNAMIC_DRAW)
-		r.gpuGlyphs = len(r.glyphs)
-	} else {
-		r.uploadRanges(r.glyphSlot, gs, unsafe.Pointer(&r.glyphs[0]), len(r.glyphs))
-	}
+	r.gpuGlyphs = uploadInstances(r.packedGlyphs, r.gpuGlyphs, cap(r.packedGlyphs))
 	gl.BindBuffer(gl.ARRAY_BUFFER, 0)
 }
 
-// uploadRanges uploads contiguous runs of dirty rows plus the overlay tail.
-func (r *Renderer) uploadRanges(slot, size int, base unsafe.Pointer, total int) {
-	up := func(first, count int) {
-		off := first * size
-		gl.BufferSubData(gl.ARRAY_BUFFER, off, count*size, unsafe.Add(base, off))
+// uploadInstances writes data to the bound buffer, which holds gpuCap
+// instances, growing it to want instances when data does not fit. It
+// returns the buffer's capacity.
+func uploadInstances[T any](data []T, gpuCap, want int) int {
+	if len(data) == 0 {
+		return gpuCap
 	}
-	for y := 0; y < r.rows; {
-		if !(r.allDirty || r.rowDirty[y]) {
-			y++
-			continue
-		}
-		start := y
-		for y < r.rows && (r.allDirty || r.rowDirty[y]) {
-			y++
-		}
-		up(start*slot, (y-start)*slot)
+	size := int(unsafe.Sizeof(data[0]))
+	if len(data) > gpuCap {
+		gl.BufferData(gl.ARRAY_BUFFER, want*size, nil, gl.DYNAMIC_DRAW)
+		gpuCap = want
 	}
-	tail := r.rows * slot
-	up(tail, total-tail)
+	gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(data)*size, gl.Ptr(data))
+	return gpuCap
 }

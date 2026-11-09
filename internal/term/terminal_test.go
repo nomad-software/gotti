@@ -2,6 +2,7 @@ package term
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -170,18 +171,22 @@ func TestBCE(t *testing.T) {
 
 func TestReplies(t *testing.T) {
 	cases := map[string]string{
-		"\x1b[c":                  "\x1b[?62;22c",
-		"\x1b[>c":                 "\x1b[>1;10;0c",
-		"\x1b[5n":                 "\x1b[0n",
-		"\x1b[3;4H\x1b[6n":        "\x1b[3;4R",
-		"\x1b[?2026$p":            "\x1b[?2026;2$y",
-		"\x1b[?2004h\x1b[?2004$p": "\x1b[?2004;1$y",
-		"\x1b[18t":                "\x1b[8;24;80t",
-		"\x1b]11;?\x07":           "\x1b]11;rgb:1010/1010/1010\x07",
-		"\x1b]4;1;?\x1b\\":        "\x1b]4;1;rgb:cdcd/0000/0000\x1b\\",
-		"\x1b[?u":                 "\x1b[?0u",
-		"\x1b[>5u\x1b[?u":         "\x1b[?5u",
-		"\x1bP$qr\x1b\\":          "\x1bP1$r1;24r\x1b\\",
+		"\x1b[c":                               "\x1b[?62;22c",
+		"\x1b[>c":                              "\x1b[>1;10;0c",
+		"\x1b[5n":                              "\x1b[0n",
+		"\x1b[3;4H\x1b[6n":                     "\x1b[3;4R",
+		"\x1b[?2026$p":                         "\x1b[?2026;2$y",
+		"\x1b[?2004h\x1b[?2004$p":              "\x1b[?2004;1$y",
+		"\x1b[18t":                             "\x1b[8;24;80t",
+		"\x1b]11;?\x07":                        "\x1b]11;rgb:1010/1010/1010\x07",
+		"\x1b]4;1;?\x1b\\":                     "\x1b]4;1;rgb:cdcd/0000/0000\x1b\\",
+		"\x1b[?u":                              "\x1b[?0u",
+		"\x1b[>5u\x1b[?u":                      "\x1b[?5u",
+		"\x1bP$qr\x1b\\":                       "\x1bP1$r1;24r\x1b\\",
+		"\x1bP$qm\x1b\\":                       "\x1bP1$r0m\x1b\\",
+		"\x1b[1;3;4:3;9;31;102m\x1bP$qm\x1b\\": "\x1bP1$r0;1;3;9;4:3;31;102m\x1b\\",
+		"\x1b[7;53;38;5;200;48;2;1;2;3;58:2::9:8:7m\x1bP$qm\x1b\\": "\x1bP1$r0;7;53;38;5;200;48;2;1;2;3;58:2::9:8:7m\x1b\\",
+		"\x1b[2;8;4;58;5;3m\x1bP$qm\x1b\\":                         "\x1bP1$r0;2;8;4;58:5:3m\x1b\\",
 	}
 	for in, want := range cases {
 		term := feed(New(80, 24, 0), in)
@@ -445,5 +450,26 @@ func TestDefaultCursor(t *testing.T) {
 	feed(term, "\x1b[5 q\x1bc") // a full reset also returns to the default
 	if term.CursorStyle != CursorBlock {
 		t.Fatalf("reset: %d", term.CursorStyle)
+	}
+}
+
+// TestSGRReportRoundTrip feeds random SGR sequences, then checks that the
+// DECRQSS report recreates the same pen in a fresh terminal.
+func TestSGRReportRoundTrip(t *testing.T) {
+	codes := []string{"0", "1", "2", "3", "4", "4:2", "4:3", "4:5", "7", "8", "9", "21", "22", "24", "53",
+		"31", "37", "39", "41", "49", "92", "107", "38;5;3", "38;5;200", "48;5;9", "38;2;1;2;3",
+		"48:2::4:5:6", "58;5;7", "58:2::7:8:9", "59"}
+	rng := rand.New(rand.NewSource(3))
+	for i := 0; i < 2000; i++ {
+		var seq []string
+		for k := 1 + rng.Intn(5); k > 0; k-- {
+			seq = append(seq, codes[rng.Intn(len(codes))])
+		}
+		a := feed(newT(10, 2), "\x1b["+strings.Join(seq, ";")+"m")
+		report := a.sgrReport()
+		b := feed(newT(10, 2), "\x1b["+report+"m")
+		if a.cur.pen != b.cur.pen || a.ulColor != b.ulColor {
+			t.Fatalf("%v: report %q gives %+v/%x, want %+v/%x", seq, report, b.cur.pen, b.ulColor, a.cur.pen, a.ulColor)
+		}
 	}
 }

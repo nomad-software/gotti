@@ -236,7 +236,7 @@ func (t *Terminal) dcsDispatch(cmd byte, data []byte) {
 	case inter == '$' && cmd == 'q': // DECRQSS
 		switch string(data) {
 		case "m":
-			t.reply("\x1bP1$r0m\x1b\\")
+			t.reply("\x1bP1$r" + t.sgrReport() + "m\x1b\\")
 		case "r":
 			t.reply("\x1bP1$r" + strconv.Itoa(t.top+1) + ";" + strconv.Itoa(t.bot+1) + "r\x1b\\")
 		case " q":

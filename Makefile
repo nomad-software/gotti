@@ -4,7 +4,7 @@ BINARY := termite
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test fuzz bench vet icons screenshot clean
+.PHONY: build run test fuzz bench guibench vet icons screenshot clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -25,6 +25,11 @@ fuzz:
 
 bench:
 	go test -timeout $(TEST_TIMEOUT) -run '^$$' -bench . ./internal/term
+
+# Throughput, frame costs and a CPU profile of the GUI under Xvfb; see
+# test/guibench/run.sh. Run it on two builds to compare them.
+guibench: build
+	test/guibench/run.sh ./$(BINARY)
 
 vet:
 	go vet ./...

@@ -107,6 +107,7 @@ func main() {
 	app := ui.NewApp(cfg, *cfgPath, flag.Args())
 	app.NewWindow(lf)
 	qt.QApplication_Exec()
+	ui.FlushFrameStats()
 
 	if *memProfile != "" {
 		if f, err := os.Create(*memProfile); err == nil {

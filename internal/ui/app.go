@@ -6,11 +6,8 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"reflect"
-	"time"
 
 	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"termite/internal/config"
 	"termite/internal/desktop"
@@ -36,7 +33,6 @@ type App struct {
 	fontScale  float64
 	focused    *Pane
 	broadcast  int
-	stopWatch  func()
 	configErr  string // the config file's latest problem, shown in pane headers
 	defaultCmd []string
 }
@@ -47,9 +43,6 @@ func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
 	a.bindings = cfg.ParseBindings()
 	a.theme = cfg.ResolveTheme()
 	applyWindowTheme(cfg.WindowTheme)
-	a.stopWatch = config.Watch(cfgPath, time.Second, func(c *config.Config, err error) {
-		mainthread.Start(func() { a.reload(c, err) })
-	})
 	return a
 }
 
@@ -58,17 +51,9 @@ func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
 func (a *App) reload(c *config.Config, err error) {
 	// Problems are shown in every pane's header until the file is fixed;
 	// whatever did load is still applied (Load falls back to defaults).
-	problem := ""
+	a.configErr = ""
 	if err != nil {
-		problem = err.Error()
-	}
-	if c != nil && problem == a.configErr && reflect.DeepEqual(c, a.cfg) {
-		// Nothing changed: typically termite's own write (Options, the
-		// saved window size) coming back from the file watcher.
-		return
-	}
-	a.configErr = problem
-	if err != nil {
+		a.configErr = err.Error()
 		fmt.Fprintln(os.Stderr, "termite:", err)
 	}
 	if c == nil {
@@ -202,7 +187,6 @@ func (a *App) windowClosed(w *Window) {
 		}
 	}
 	if len(a.windows) == 0 {
-		a.stopWatch()
 		qt.QCoreApplication_Quit()
 	}
 }

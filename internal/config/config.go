@@ -1,5 +1,5 @@
-// Package config loads termite's JSON configuration, watches it for changes
-// and defines the built-in colour themes.
+// Package config loads termite's JSON configuration, writes settings back
+// to it and defines the built-in colour themes.
 package config
 
 import (
@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Config is the user configuration.
@@ -241,50 +240,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: %s", strings.Join(errs, "; "))
 	}
 	return nil
-}
-
-// Watch calls fn with the new configuration whenever the file changes, on
-// the watcher's goroutine, until the returned func is called. It uses
-// inotify, so an idle watcher costs nothing; if that is unavailable (the
-// config folder does not exist yet, say) it polls every interval instead.
-func Watch(path string, interval time.Duration, fn func(*Config, error)) func() {
-	reload := func() {
-		c, err := Load(path)
-		fn(c, err)
-	}
-	if stop, err := watchNotify(path, reload); err == nil {
-		return stop
-	}
-	return watchPoll(path, interval, reload)
-}
-
-// watchPoll checks the file's modification time every interval.
-func watchPoll(path string, interval time.Duration, changed func()) func() {
-	stop := make(chan struct{})
-	modTime := func() time.Time {
-		st, err := os.Stat(path)
-		if err != nil {
-			return time.Time{}
-		}
-		return st.ModTime()
-	}
-	last := modTime()
-	go func() {
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				if m := modTime(); !m.Equal(last) {
-					last = m
-					changed()
-				}
-			}
-		}
-	}()
-	return func() { close(stop) }
 }
 
 // Chord is a parsed key binding.

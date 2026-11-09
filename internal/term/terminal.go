@@ -1337,6 +1337,55 @@ func (t *Terminal) sgr() {
 	}
 }
 
+// sgrReport returns the SGR parameters that recreate the current pen, as
+// DECRQSS reports them: "0" followed by each attribute and colour set.
+// Colours use the semicolon forms most parsers read; underline styles and
+// the underline colour use the colon forms they are defined with.
+func (t *Terminal) sgrReport() string {
+	pen := &t.cur.pen
+	b := []byte{'0'}
+	add := func(s string) { b = append(append(b, ';'), s...) }
+	for _, a := range [...]struct {
+		attr Attr
+		code string
+	}{
+		{AttrBold, "1"}, {AttrDim, "2"}, {AttrItalic, "3"}, {AttrInverse, "7"},
+		{AttrHidden, "8"}, {AttrStrike, "9"}, {AttrOverline, "53"},
+	} {
+		if pen.Attr&a.attr != 0 {
+			add(a.code)
+		}
+	}
+	switch u := pen.Attr.Underline(); u {
+	case ULNone:
+	case ULSingle:
+		add("4")
+	default:
+		add("4:" + strconv.Itoa(u))
+	}
+	color := func(c Color, base int, ext string, sep string) {
+		switch {
+		case c.IsRGB():
+			r, g, bl := c.RGB()
+			if sep == ":" {
+				add(ext + ":2:" + ":" + strconv.Itoa(int(r)) + ":" + strconv.Itoa(int(g)) + ":" + strconv.Itoa(int(bl)))
+			} else {
+				add(ext + ";2;" + strconv.Itoa(int(r)) + ";" + strconv.Itoa(int(g)) + ";" + strconv.Itoa(int(bl)))
+			}
+		case c.IsIndexed() && base > 0 && c.Index() < 8:
+			add(strconv.Itoa(base + int(c.Index())))
+		case c.IsIndexed() && base > 0 && c.Index() < 16:
+			add(strconv.Itoa(base + 60 + int(c.Index()) - 8))
+		case c.IsIndexed():
+			add(ext + sep + "5" + sep + strconv.Itoa(int(c.Index())))
+		}
+	}
+	color(pen.Fg, 30, "38", ";")
+	color(pen.Bg, 40, "48", ";")
+	color(t.ulColor, 0, "58", ":")
+	return string(b)
+}
+
 // parseExtColor parses 38/48/58 colour specs in either the colon form
 // (38:2::r:g:b, 38:5:n) or the legacy semicolon form (38;2;r;g;b).
 // It returns the index of the next unconsumed parameter.

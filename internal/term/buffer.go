@@ -184,24 +184,35 @@ func (b *Buffer) ScrollDown(n, top, bottom int, fill Cell) {
 	}
 }
 
-// ClearScrollback drops all scrollback lines.
+// ClearScrollback drops all scrollback lines. The screen stays where it is
+// in the ring (only the start index moves), and every other line is wiped
+// and its memory given back to the system: the cleared text doesn't linger,
+// and a full scrollback stops costing memory until it fills again.
 func (b *Buffer) ClearScrollback() {
 	sb := b.ScrollbackLen()
 	if sb == 0 {
 		return
 	}
-	// Move the screen to the start of the ring.
-	tmp := make([]Cell, b.Rows*b.Cols)
-	tw := make([]bool, b.Rows)
-	for y := 0; y < b.Rows; y++ {
-		copy(tmp[y*b.Cols:], b.Line(y))
-		tw[y] = b.RowWrapped(y)
-	}
-	b.start, b.count = 0, b.Rows
+	b.start = b.phys(sb) // the screen's first line becomes logical line 0
+	b.count = b.Rows
 	b.Evicted += int64(sb)
-	for y := 0; y < b.Rows; y++ {
-		copy(b.Line(y), tmp[y*b.Cols:(y+1)*b.Cols])
-		b.SetWrapped(y, tw[y])
+	// The lines from just after the screen round to its first line.
+	n := len(b.wrapped)
+	from, to := b.phys(b.Rows), b.phys(b.Rows)+n-b.Rows
+	if to <= n {
+		b.releaseLines(from, to)
+	} else {
+		b.releaseLines(from, n)
+		b.releaseLines(0, to-n)
 	}
 	b.allDirty = true
+}
+
+// releaseLines blanks physical lines [from, to) and releases their memory.
+func (b *Buffer) releaseLines(from, to int) {
+	if from >= to {
+		return
+	}
+	clear(b.wrapped[from:to])
+	releaseCells(b.cells[from*b.Cols : to*b.Cols])
 }

@@ -5,10 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
-func TestLoadAndWatch(t *testing.T) {
+func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
 	c, err := Load(p)
@@ -29,23 +28,6 @@ func TestLoadAndWatch(t *testing.T) {
 	b := c.ParseBindings()
 	if b[Chord{Ctrl: true, Alt: true, Key: "c"}] != "copy" || b[Chord{Ctrl: true, Key: "equal"}] != "font_bigger" {
 		t.Fatal("bindings", b)
-	}
-	got := make(chan *Config, 1)
-	stop := Watch(p, 20*time.Millisecond, func(c *Config, err error) {
-		select {
-		case got <- c:
-		default: // later writes below need no reload
-		}
-	})
-	defer stop()
-	os.WriteFile(p, []byte(`{"theme": "solarized-light"}`), 0o644)
-	select {
-	case c := <-got:
-		if c.Theme != "solarized-light" {
-			t.Fatal(c.Theme)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("no reload")
 	}
 	os.WriteFile(p, []byte(`{"theme": "nope"}`), 0o644)
 	if _, err := Load(p); err == nil {
@@ -124,41 +106,5 @@ func TestThemes(t *testing.T) {
 	}
 	if id := NewThemeID(map[string]ThemeSpec{"my-theme": {}}, "My Theme!"); id != "my-theme-2" {
 		t.Fatalf("NewThemeID = %q", id)
-	}
-}
-
-// TestWatchReplace checks that a file renamed over the config, as editors
-// and SetValues save it, is noticed, and that the poll fallback works.
-func TestWatchReplace(t *testing.T) {
-	for _, poll := range []bool{false, true} {
-		dir := t.TempDir()
-		p := filepath.Join(dir, "config.json")
-		got := make(chan string, 4)
-		reload := func() {
-			c, _ := Load(p)
-			got <- c.Theme
-		}
-		var stop func()
-		if poll {
-			stop = watchPoll(p, 10*time.Millisecond, reload)
-			time.Sleep(20 * time.Millisecond)
-		} else {
-			var err error
-			if stop, err = watchNotify(p, reload); err != nil {
-				t.Skip("no inotify:", err)
-			}
-		}
-		if err := SetValue(p, "theme", "solarized-light"); err != nil {
-			t.Fatal(err)
-		}
-		select {
-		case th := <-got:
-			if th != "solarized-light" {
-				t.Fatalf("poll=%v: theme %q", poll, th)
-			}
-		case <-time.After(2 * time.Second):
-			t.Fatalf("poll=%v: no reload", poll)
-		}
-		stop()
 	}
 }

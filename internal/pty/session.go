@@ -26,7 +26,10 @@ type Session struct {
 	T   *term.Terminal
 	cmd *exec.Cmd
 	f   *os.File
-	fd  uintptr
+	// rc reaches the PTY's descriptor for poll and ioctl. Through it the
+	// descriptor can't be closed (and its number reused) mid-call, and a
+	// call after Close fails rather than touching another file.
+	rc syscall.RawConn
 
 	writes chan *[]byte
 	done   chan struct{}
@@ -85,7 +88,12 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("start %s: %w", args[0], err)
 	}
-	s := &Session{T: t, cmd: cmd, f: f, fd: f.Fd(), writes: make(chan *[]byte, 1024), done: make(chan struct{})}
+	rc, err := f.SyscallConn()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	s := &Session{T: t, cmd: cmd, f: f, rc: rc, writes: make(chan *[]byte, 1024), done: make(chan struct{})}
 	return s, nil
 }
 
@@ -98,19 +106,21 @@ func (s *Session) Run() {
 func (s *Session) reader() {
 	defer s.finish()
 	buf := make([]byte, readBufSize)
-	fd := int32(s.fd)
-	pfd := []unix.PollFd{{Fd: fd, Events: unix.POLLIN}}
+	pending := func() bool { // more output already waiting?
+		ready := false
+		s.rc.Control(func(fd uintptr) {
+			pfd := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+			k, err := unix.Poll(pfd, 0)
+			ready = err == nil && k > 0 && pfd[0].Revents&unix.POLLIN != 0
+		})
+		return ready
+	}
 	for {
 		n, err := s.f.Read(buf)
 		// The kernel hands out at most a few KB per read; keep reading
 		// while more is already buffered so bursts are parsed in large
 		// (64 KB+) chunks and the screen is locked far less often.
-		for err == nil && n > 0 && n < len(buf)-4096 {
-			pfd[0].Revents = 0
-			k, perr := unix.Poll(pfd, 0)
-			if perr != nil || k <= 0 || pfd[0].Revents&unix.POLLIN == 0 {
-				break
-			}
+		for err == nil && n > 0 && n < len(buf)-4096 && pending() {
 			m, rerr := s.f.Read(buf[n:])
 			n += m
 			if rerr != nil {
@@ -193,10 +203,8 @@ func (s *Session) WriteString(str string) { s.Write([]byte(str)) }
 
 // Resize changes the PTY window size (and so sends SIGWINCH).
 func (s *Session) Resize(cols, rows, pxW, pxH int) {
-	if s.closed.Load() {
-		return
-	}
-	_ = cpty.Setsize(s.f, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows), X: uint16(pxW), Y: uint16(pxH)})
+	ws := &unix.Winsize{Col: uint16(cols), Row: uint16(rows), Xpixel: uint16(pxW), Ypixel: uint16(pxH)}
+	s.rc.Control(func(fd uintptr) { _ = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, ws) })
 }
 
 // Close terminates the child.
@@ -248,12 +256,11 @@ func (s *Session) ForegroundName() string {
 }
 
 func (s *Session) foregroundPgid() int32 {
-	if s.closed.Load() {
-		return 0
-	}
 	var pgid int32
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, s.fd, syscall.TIOCGPGRP, uintptr(unsafe.Pointer(&pgid)))
-	if e != 0 {
+	var e syscall.Errno
+	if err := s.rc.Control(func(fd uintptr) {
+		_, _, e = syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TIOCGPGRP, uintptr(unsafe.Pointer(&pgid)))
+	}); err != nil || e != 0 {
 		return 0
 	}
 	return pgid

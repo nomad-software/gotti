@@ -15,16 +15,19 @@ vim).
 
 - **Fast where it counts.** The parser takes plain text at over 400 MB/s
   and full-colour output at 165 MB/s, with zero allocations in steady
-  state. A 100 MB `cat` finishes in about a second, on a software
-  renderer. A keypress reaches the screen in single-digit milliseconds.
+  state. A 100 MB `cat` finishes in under a second, even on a software
+  renderer. Frames draw only the cells in use and are paced to the
+  display, so heavy output never wastes CPU on frames nobody sees. A
+  keypress reaches the screen in single-digit milliseconds.
 - **Costs nothing when idle.** There are no polling timers: redraws happen
-  only after output, the config file is watched with inotify, and the
-  cursor blinks only when a program asks for it. An idle window uses 0 CPU
+  only after output, nothing watches the config file, and the cursor
+  blinks only when a program asks for it. An idle window uses 0 CPU
   ticks.
 - **Light on memory.** Each cell is 16 bytes with no pointers, and the
   scrollback is one ring buffer allocated up front. Scrolling moves an
   index and copies nothing, and pages are only touched once lines are
-  written.
+  written. Clear Scrollback gives the memory back to the system and wipes
+  the old text.
 - **Resizes smoothly.** Reflow rewraps 10,000 lines of scrollback in
   about 12 ms, writing straight into the new buffer. Dragging a window
   edge doesn't stutter or pile up garbage.
@@ -40,8 +43,8 @@ vim).
   cursor-aligned Alt+Arrow navigation, input broadcast to a tab or a
   group of panes, saved layouts that reopen each pane in its directory
   and command, and pane headers that show where each shell is.
-- **Comfortable to configure.** One JSON file that applies the moment
-  it's saved, with problems shown in place while the rest still loads.
+- **Comfortable to configure.** One JSON file, with problems shown in
+  place while the rest still loads.
   There is also a native Options dialog with a theme editor and live
   preview, and a shortcut editor that catches clashes.
 
@@ -73,13 +76,15 @@ builds are cached.
 Profiling: `--cpuprofile FILE`, `--memprofile FILE`, or `--pprof
 localhost:6060` for live `net/http/pprof`. `TERMITE_DEBUG=startup,latency`
 prints time-to-first-frame and keypress-to-frame latencies.
+`TERMITE_DEBUG=frames` prints, once a second while painting, how many
+frames were drawn, their average and worst time (including the GPU's
+work, through `glFinish`) and the instances each drew.
 
 ## Configuration
 
-`~/.config/termite/config.json` (or `$XDG_CONFIG_HOME/termite`). Changes are
-applied live, with no restart needed: the file is watched with inotify,
-including when an editor saves it by renaming a new file over it, or when
-it is a symlink into a dotfiles checkout. `termite --write-config` writes every
+`~/.config/termite/config.json` (or `$XDG_CONFIG_HOME/termite`). It is read
+at start-up. After editing it by hand, press Ctrl+Shift+R (`reload_config`)
+to apply the changes without a restart. `termite --write-config` writes every
 option with its default. Problems (misspelt keys, bad values, syntax
 errors with their line) are shown in red in every pane's header until the
 file is fixed; whatever is valid still applies.
@@ -177,14 +182,15 @@ internal/input       key (xterm + kitty), mouse (SGR) and paste encoding
 internal/render      glyph atlas, procedural box drawing, OpenGL renderer
 internal/qtgl        C++ QOpenGLWidget shim (miqt has no Qt 6 OpenGLWidgets binding)
 internal/ui          windows, tabs, splits, panes, layouts, actions
-internal/config      JSON config, live reload, in-place setting writes, themes, key chords
+internal/config      JSON config, in-place setting writes, themes, key chords
 internal/desktop     desktop entry and icon install
 internal/appicon     embedded program icon
 ```
 
 Data flow per pane: the reader goroutine reads the PTY, locks the
-terminal, parses, unlocks and requests a redraw. Requests are coalesced,
-and Qt paints at most once per vsync. On paint, the main thread locks
+terminal, parses, unlocks and requests a redraw. Requests are coalesced
+and paced to the screen's refresh rate (the first output after a pause
+paints at once), so floods of output never render per chunk. On paint, the main thread locks
 briefly to copy only the damaged rows, then builds instances and draws
 without the lock. All Qt and GL calls happen on the main thread.
 
@@ -193,7 +199,7 @@ Key implementation points:
 - **Grid and scrollback** form one flat `[]Cell`, allocated up front and used as a ring. Scrolling into scrollback moves an index; nothing is copied. Untouched pages never become resident.
 - **Parser**: a VT500-style state machine with fast paths for the bulk of real output. Runs of printable ASCII are written in one go, CSI parameters are scanned in a tight loop, and OSC/DCS payloads are copied whole. Cells are stored from the pen in one 16-byte write. Steady-state allocations are zero.
 - **Reflow** measures the result in a first pass, then writes only the lines that are kept straight into the new ring, so a resize allocates nothing but the new buffer.
-- **Rendering**: two instanced draw calls, backgrounds then glyphs. Each row owns a fixed slot in the instance buffers, so only damaged rows are re-uploaded.
+- **Rendering**: two instanced draw calls, backgrounds then glyphs. Each row builds into its own slot, rebuilt only when the row is damaged; every frame the instances actually in use are packed together, so the GPU never processes empty slots (a typical frame draws 300–4,000 instances rather than 34,000).
 - **Glyphs** are rasterized once with QPainter, which gives Qt's font fallback, colour emoji and shaping for ligatures. They live in a shared RGBA atlas, since all pane contexts share GL resources.
 - **Box drawing**, block elements, braille, Powerline separators and DEC scan lines are drawn procedurally, so they join cleanly between cells.
 - **Decorations** (all underline styles, strike, overline, cursor shapes) are atlas sprites, so they need no extra draw calls.
@@ -206,7 +212,9 @@ make test                                             # all tests, with the race
 make vet
 go test ./...                                         # unit + golden-screen tests
 go test ./internal/term -fuzz FuzzParser              # parser fuzzing
-go test ./internal/term -bench . -run X               # throughput
+go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
+make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)
+CLEARMEM=1 go test ./internal/term -run ClearScrollbackMemory -v  # memory Clear Scrollback returns
 STRESS=1 go test ./internal/term -run StressRandom    # random-sequence hang check
 test/termite-headless -size 80x24 -script '1{enter}{wait 500}' -- vttest
 ```
@@ -214,17 +222,19 @@ test/termite-headless -size 80x24 -script '1{enter}{wait 500}' -- vttest
 ## Measured results
 
 Measured on an i7-6700K under Xvfb with Mesa llvmpipe (software GL), so a
-real GPU should do as well or better (`make bench` for the parser and
-reflow figures):
+real GPU should do as well or better. `make bench` gives the parser and
+reflow figures, `make guibench` the GUI ones:
 
 | Metric | Target | Measured |
 | --- | --- | --- |
-| Keypress-to-screen latency | < 10 ms | 5–9 ms (includes PTY echo round trip and `glFinish`) |
-| `cat` of a 100 MB file | < 2 s | 1.06 s in the GUI |
+| Keypress-to-screen latency | < 10 ms | 5–9 ms (includes PTY echo round trip and `glFinish`; measured before frame pacing, which never delays the first frame after a pause) |
+| `cat` of a 100 MB file | < 2 s | 0.89 s in the GUI (default window); 1.1 s at 1600×1000 |
+| Frame time, 1600×1000 | | 1.2 ms for a mostly empty screen, 3.4 ms while `cat` scrolls, 3.9 ms for a full screen of colour |
 | Parser throughput | | 418 MB/s plain text, 167 MB/s SGR-heavy, 129 MB/s CJK/emoji, 135 MB/s cursor movement (one core) |
 | Reflow, 200 columns × 10k lines | | 12.7 ms per resize |
 | Idle CPU | ~0% | 0 ticks over 5 s |
 | Memory per pane, 10k scrollback | < 20 MB | 15.4 MB of emulator heap (120 cols); see note |
+| Clear Scrollback, 100k lines | | resident memory 191 MB → 8 MB, in 0.4 ms |
 | Startup time | < 200 ms | 150–170 ms to first frame |
 
 Memory note: every pane is a `QOpenGLWidget` with its own GL context. Under

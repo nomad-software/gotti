@@ -5,7 +5,9 @@ README.md for features, config and architecture.
 
 ## Build and check
 - `make build` (./termite, test/termite-headless), `make test` (race), `make vet`,
-  `make fuzz`, `make bench` (parser + reflow), `make icons` (SVG → embedded PNG),
+  `make fuzz`, `make bench` (parser + reflow), `make guibench` (GUI throughput,
+  frame costs and a CPU profile under Xvfb; pass two builds to
+  `test/guibench/run.sh` to compare), `make icons` (SVG → embedded PNG),
   `make screenshot` (docs/screenshot.png via Xvfb; needs Xvfb, ImageMagick, vim).
 - First build compiles miqt (minutes). Always run `gofmt -l .`, `go vet ./...`
   and `staticcheck ./...` (in `$GOPATH/bin`).
@@ -15,6 +17,9 @@ README.md for features, config and architecture.
   entry otherwise), screenshot with `import -window root`. Start Xvfb with `&`
   and kill it by PID: `pkill -f "Xvfb :99"` also matches (and kills) the
   shell running that command.
+- Measure before and after any performance change (`make bench`,
+  `make guibench`, `TERMITE_DEBUG=frames`, `--cpuprofile`), and report the
+  numbers whichever way they go.
 - `test/termite-headless -size 80x24 -script '...' -- prog` prints the screen of a
   program run through the emulator core (vim, vttest, …) without a GUI.
 
@@ -23,16 +28,16 @@ README.md for features, config and architecture.
   `Buffer` (scrollback), VT500 parser with fast paths (ASCII runs, CSI params,
   OSC/DCS payloads), two-pass reflow, OSC/DCS.
 - `internal/render` atlas, procedural box drawing, instanced GL renderer (two
-  draw calls, per-row instance slots re-uploaded only when damaged).
+  draw calls; per-row instance slots rebuilt only when damaged, and the used
+  instances packed each frame so empty slots are never drawn).
 - `internal/qtgl` C++ QOpenGLWidget shim (miqt has no Qt 6 OpenGLWidgets).
 - `internal/ui` windows/tabs/splits/panes, menu, options dialog (General,
   User interface, Colours, Keyboard Shortcuts), pane headers, layouts.
   `qtutil.go` has helpers for throwaway Qt values (see the miqt rule).
-- `internal/config` JSON config, live reload (inotify on the file's folder
-  and a symlink target's; polls only if inotify can't start), `SetValues`
-  writes, themes (`themes` in the file replaces the built-ins), key chords.
-  `App.reload` ignores a config equal to the current one, so termite's own
-  writes coming back from the watcher cost nothing.
+- `internal/config` JSON config, `SetValues` writes, themes (`themes` in the
+  file replaces the built-ins), key chords. The file is read at start-up
+  only (and on `reload_config` or Options → OK/Apply); it is deliberately
+  not watched.
 
 ## Rules learnt the hard way
 - All Qt/GL calls on the main thread; PTY reader goroutines only lock the
@@ -56,4 +61,13 @@ README.md for features, config and architecture.
   dialogs keep the native style.
 - Idle must stay at ~0% CPU: no polling timers; refresh work happens after
   output.
+- Redraws after output are paced to the refresh rate (`Pane.requestRedraw`).
+  Xvfb has no vsync, so without pacing cheap frames run unthrottled and
+  llvmpipe's threads steal CPU from the parser (cat got 30% slower).
+- Raw syscalls on the PTY (poll, ioctl) go through `Session.rc.Control`,
+  never a saved descriptor number: Close may run concurrently and the
+  number could be reused.
+- `ClearScrollback` releases the old lines with `madvise(MADV_DONTNEED)`
+  (`release_linux.go`); that's safe because cells hold no pointers and zero
+  is a blank cell.
 - The user handles git; don't commit or suggest commits.
