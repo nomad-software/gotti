@@ -39,8 +39,7 @@ type GlyphCache struct {
 	m     map[glyphKey]Sprite
 	// Gen changes whenever cached sprites are invalidated.
 	Gen       int
-	texts     []string        // strings drawn as kindText sprites, by id
-	textIndex map[string]rune // and their ids
+	textIndex map[string]rune // ids of strings drawn as kindText sprites
 	maxSize   int
 }
 
@@ -89,8 +88,7 @@ func (c *GlyphCache) textID(s string) rune {
 	if id, ok := c.textIndex[s]; ok {
 		return id
 	}
-	id := rune(len(c.texts))
-	c.texts = append(c.texts, s)
+	id := rune(len(c.textIndex))
 	c.textIndex[s] = id
 	return id
 }

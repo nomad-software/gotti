@@ -8,8 +8,8 @@ import (
 
 var appIconCache *qt.QIcon
 
-// appIcon returns the icon of the program.
-func appIcon() *qt.QIcon {
+// AppIcon returns the program's icon, made once and shared by every window.
+func AppIcon() *qt.QIcon {
 	if appIconCache == nil {
 		pixmap := qt.NewQPixmap()
 		// The icon keeps a copy of the picture.
@@ -19,6 +19,3 @@ func appIcon() *qt.QIcon {
 	}
 	return appIconCache
 }
-
-// AppIcon returns the program's icon (for the application as a whole).
-func AppIcon() *qt.QIcon { return appIcon() }

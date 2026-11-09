@@ -94,7 +94,7 @@ func Default() *Config {
 		LineHeight:   1.0,
 		Theme:        DefaultTheme,
 		WindowTheme:  "system",
-		Themes:       builtinThemes(),
+		Themes:       CloneThemes(BuiltinThemes),
 		Scrollback:   10000,
 		CursorStyle:  "block",
 		CopyOnSelect: true,

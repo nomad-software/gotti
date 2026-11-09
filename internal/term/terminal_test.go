@@ -249,8 +249,11 @@ func TestSyncOutput(t *testing.T) {
 func TestOSC(t *testing.T) {
 	term := feed(newT(20, 2), "\x1b]2;my title\x1b\\\x1b]7;file://host/home/u%20x\x07\x1b]52;c;aGVsbG8=\x07")
 	ev := term.TakeEvents()
-	if term.Title != "my title" || ev&EvTitle == 0 {
+	if term.Title != "my title" {
 		t.Fatal("title", term.Title)
+	}
+	if ev != EvCwd|EvClipboard {
+		t.Fatalf("events %b, want cwd and clipboard", ev)
 	}
 	if term.Cwd != "/home/u x" {
 		t.Fatal("cwd", term.Cwd)

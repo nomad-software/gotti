@@ -1,6 +1,9 @@
 package input
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLegacy(t *testing.T) {
 	cases := []struct {
@@ -108,5 +111,23 @@ func TestPaste(t *testing.T) {
 	}
 	if !IsMultiLine("a\nb") || IsMultiLine("ab\n") {
 		t.Error("multiline detection")
+	}
+}
+
+// TestPasteCannotEscapeBrackets pastes text built so that removing a paste
+// marker once leaves another behind. Nothing between the brackets may end
+// the paste early, or the rest would run as typed commands.
+func TestPasteCannotEscapeBrackets(t *testing.T) {
+	for _, in := range []string{
+		"\x1b[20\x1b[201~1~rm -rf ~\n",
+		"\x1b[20\x1b[200~1~x",
+		"\x1b[2\x1b[20\x1b[201~1~1~x",
+		"\x1b[201~\x1b[201~",
+	} {
+		out := string(Paste(in, true))
+		inner := strings.TrimSuffix(strings.TrimPrefix(out, "\x1b[200~"), "\x1b[201~")
+		if strings.Contains(inner, "\x1b[201~") || strings.Contains(inner, "\x1b[200~") {
+			t.Errorf("%q pastes as %q, which ends the paste early", in, out)
+		}
 	}
 }

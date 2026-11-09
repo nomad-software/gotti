@@ -414,13 +414,17 @@ func EncodeMouse(button, action int, x, y int, mods Mods) []byte {
 // ----------------------------------------------------------------- paste
 
 // Paste prepares clipboard text for sending. With bracketed paste it is
-// wrapped in the paste markers (and any embedded end marker removed, so
-// pasted text cannot escape the bracket); otherwise newlines become CR.
+// wrapped in the paste markers, with any markers inside it removed so that
+// pasted text cannot end the paste early; otherwise newlines become CR.
 func Paste(text string, bracketed bool) []byte {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	if bracketed {
-		text = strings.ReplaceAll(text, "\x1b[201~", "")
-		text = strings.ReplaceAll(text, "\x1b[200~", "")
+		// Removing a marker can join the text around it into a new one
+		// ("\x1b[20" + marker + "1~"), so remove until none is left.
+		for strings.Contains(text, "\x1b[201~") || strings.Contains(text, "\x1b[200~") {
+			text = strings.ReplaceAll(text, "\x1b[201~", "")
+			text = strings.ReplaceAll(text, "\x1b[200~", "")
+		}
 		return []byte("\x1b[200~" + strings.ReplaceAll(text, "\n", "\r") + "\x1b[201~")
 	}
 	// Strip control characters that could act as commands, except tab/newline.

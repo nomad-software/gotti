@@ -11,7 +11,8 @@ import "math"
 var boxLines = map[rune][4]uint8{}
 
 func init() {
-	// urdl digits for U+2500..U+257F; "...." marks specially drawn chars.
+	// Weights up, right, down, left for U+2500..U+257F, four digits per
+	// character; "0000" marks one drawn some other way (arcs, diagonals).
 	const table = "" +
 		"0101020210102020010102021010202001010202101020200110021001200220" + // 2500
 		"0011001200210022110012002100220010011002200120021110121021101120" + // 2510
@@ -133,7 +134,7 @@ func DrawProcedural(r rune, w, h int) ([]byte, bool) {
 	case r >= 0xe0b0 && r <= 0xe0b3:
 		drawPowerline(m, r, bm)
 	case r >= 0x23ba && r <= 0x23bd:
-		frac := []float64{0.1, 0.3, 0.7, 0.9}[r-0x23ba]
+		frac := [...]float64{0.1, 0.3, 0.7, 0.9}[r-0x23ba]
 		y := int(float64(h) * frac)
 		m.rect(0, y-bm.light/2, w, y-bm.light/2+bm.light, 255)
 	case r >= 0x256d && r <= 0x2570:
@@ -267,8 +268,8 @@ func drawArc(m *mask, r rune, bm boxMetrics) {
 	lx := float64(m.w/2-bm.light/2) + t/2
 	ly := float64(m.h/2-bm.light/2) + t/2
 	// direction to the arc's centre: ╭ (+,+) ╮ (-,+) ╯ (-,-) ╰ (+,-)
-	sx, sy := map[rune][2]float64{0x256d: {1, 1}, 0x256e: {-1, 1}, 0x256f: {-1, -1}, 0x2570: {1, -1}}[r][0],
-		map[rune][2]float64{0x256d: {1, 1}, 0x256e: {-1, 1}, 0x256f: {-1, -1}, 0x2570: {1, -1}}[r][1]
+	dir := [...][2]float64{{1, 1}, {-1, 1}, {-1, -1}, {1, -1}}[r-0x256d]
+	sx, sy := dir[0], dir[1]
 	rad := math.Min(w-lx, lx)
 	rad = math.Min(rad, math.Min(h-ly, ly))
 	ccx, ccy := lx+sx*rad, ly+sy*rad

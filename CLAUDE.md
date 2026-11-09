@@ -36,7 +36,9 @@ README.md for features, config and architecture.
 ## Layout
 - `internal/term` emulator core, no GUI deps: 16-byte packed `Cell`, flat ring
   `Buffer` (scrollback), VT500 parser with fast paths (ASCII runs, CSI params,
-  OSC/DCS payloads), two-pass reflow, OSC/DCS.
+  OSC/DCS payloads), two-pass reflow, OSC/DCS handling. `Event`s exist only
+  for what the UI acts on; the renderer notices screen, colour and
+  alternate-screen changes itself.
 - `internal/render` atlas, procedural box drawing, instanced GL renderer (two
   draw calls; per-row instance slots rebuilt only when damaged, and the used
   instances packed each frame so empty slots are never drawn).
@@ -68,7 +70,8 @@ README.md for features, config and architecture.
 - `AttrWrapPad` marks the blank left when a wide char wraps; reflow, copy and
   search must skip it.
 - Stylesheets target termite's own widgets by object name only, so menus and
-  dialogs keep the native style.
+  dialogs keep the style `window_theme` gives them (the desktop's, or
+  Fusion with termite's light/dark palette).
 - Idle must stay at ~0% CPU: no polling timers; refresh work happens after
   output.
 - Redraws after output are paced to the refresh rate (`Pane.requestRedraw`).
@@ -83,4 +86,7 @@ README.md for features, config and architecture.
 - `ClearScrollback` releases the old lines with `madvise(MADV_DONTNEED)`
   (`release_linux.go`); that's safe because cells hold no pointers and zero
   is a blank cell.
+- Bracketed paste must remove paste markers until none is left: a single
+  pass lets "ESC[20" + marker + "1~" reassemble ESC[201~ and end the paste
+  early (`input.Paste`, tested).
 - The user handles git; don't commit or suggest commits.

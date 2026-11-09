@@ -192,7 +192,6 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		}
 	}
 	for i, f := range themeColorFields {
-		f := f
 		colorBtns[i].OnClicked(func() {
 			s := cur()
 			if s == nil {
@@ -207,7 +206,6 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		})
 	}
 	for i, b := range palBtns {
-		i, b := i, b
 		b.OnClicked(func() {
 			s := cur()
 			if s == nil {

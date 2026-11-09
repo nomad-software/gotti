@@ -66,6 +66,8 @@ var chordKeyToQt = map[string]string{
 	"semicolon": ";", "apostrophe": "'", "bracketleft": "[", "bracketright": "]", "grave": "`",
 }
 
+var modOrder = map[string]int{"ctrl": 0, "shift": 1, "alt": 2, "super": 3}
+
 // qtToChord converts Qt portable text ("Ctrl+Shift+PgUp") to a chord
 // string ("ctrl+shift+pageup"). Only the first key of a sequence is used.
 // Shifted symbols are recorded by their base key, as termite matches them.
@@ -106,13 +108,16 @@ func qtToChord(s string) string {
 		k = n
 	}
 	// keep config order: ctrl, shift, alt, super
-	order := map[string]int{"ctrl": 0, "shift": 1, "alt": 2, "super": 3}
-	sort.Slice(mods, func(i, j int) bool { return order[mods[i]] < order[mods[j]] })
+	sort.Slice(mods, func(i, j int) bool { return modOrder[mods[i]] < modOrder[mods[j]] })
 	return strings.Join(append(mods, k), "+")
 }
 
 // chordToQt converts a chord string to Qt portable text.
-func chordToQt(s string) string {
+func chordToQt(s string) string { return chordText(s, "Meta") }
+
+// chordText spells a chord string as Qt does ("Ctrl+Shift+PgUp"), calling
+// the Super key super; "" for no chord.
+func chordText(s, super string) string {
 	if s == "" || s == "none" {
 		return ""
 	}
@@ -131,7 +136,7 @@ func chordToQt(s string) string {
 		parts = append(parts, "Alt")
 	}
 	if ch.Super {
-		parts = append(parts, "Meta")
+		parts = append(parts, super)
 	}
 	k := ch.Key
 	if n, ok := chordKeyToQt[k]; ok {

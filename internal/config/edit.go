@@ -8,14 +8,9 @@ import (
 	"path/filepath"
 )
 
-// SetValue sets a top-level key in the JSON config file, keeping every
-// other key the user has set. The file is created from the defaults if
-// it does not exist. Keys are written sorted and indented.
-func SetValue(path, key string, value any) error {
-	return SetValues(path, map[string]any{key: value})
-}
-
-// SetValues sets several top-level keys in one write.
+// SetValues sets top-level keys in the JSON config file in one write,
+// keeping every other key the user has set. The file is created from the
+// defaults if it does not exist. Keys are written sorted and indented.
 func SetValues(path string, values map[string]any) error {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {

@@ -43,18 +43,18 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-func TestSetValue(t *testing.T) {
+func TestSetValues(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	if err := SetValue(p, "theme", "ubuntu-ambiance"); err != nil {
+	if err := SetValues(p, map[string]any{"theme": "ubuntu-ambiance"}); err != nil {
 		t.Fatal(err)
 	}
 	if c, err := Load(p); err != nil || c.Theme != "ubuntu-ambiance" || c.FontSize != 11 {
 		t.Fatalf("new file from defaults: %+v %v", c, err)
 	}
 	os.WriteFile(p, []byte(`{"font_size": 12, "keybindings": {"copy": "ctrl+c"}}`), 0o644)
-	SetValue(p, "ligatures", true)
-	SetValue(p, "font_size", 14.0)
-	SetValue(p, "theme", "solarized-light")
+	SetValues(p, map[string]any{"ligatures": true})
+	SetValues(p, map[string]any{"font_size": 14.0})
+	SetValues(p, map[string]any{"theme": "solarized-light"})
 	c, err := Load(p)
 	if err != nil {
 		t.Fatal(err)

@@ -4,8 +4,9 @@
 //
 //	termite-headless -size 80x24 -script 'ls{enter}{wait 500}exit{enter}' -- bash
 //
-// Script tokens: {enter} {esc} {tab} {up} {down} {left} {right} {wait N}
-// {ctrl X} {hex 1b5b41}; other text is sent literally.
+// Script tokens: {enter} {esc} {tab} {bs} {space} {up} {down} {left}
+// {right} {wait N} (milliseconds) {ctrl X} {hex 1b5b41}; other text is sent
+// literally.
 package main
 
 import (
@@ -29,18 +30,23 @@ func main() {
 	bench := flag.Bool("bench", false, "only report throughput and timing")
 	flag.Parse()
 	var cols, rows int
-	fmt.Sscanf(*size, "%dx%d", &cols, &rows)
+	if n, _ := fmt.Sscanf(*size, "%dx%d", &cols, &rows); n != 2 || cols < 2 || rows < 1 {
+		fatal(fmt.Errorf("-size %q: want COLSxROWS, e.g. 80x24", *size))
+	}
+	tokens, err := parseScript(*script)
+	if err != nil {
+		fatal(err)
+	}
 	t := term.New(cols, rows, 10000)
 	s, err := pty.Start(t, pty.Options{Command: flag.Args(), Cols: cols, Rows: rows})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		fatal(err)
 	}
 	exited := make(chan struct{})
 	s.OnExit = func() { close(exited) }
 	start := time.Now()
 	s.Run()
-	go runScript(s, *script)
+	go runScript(s, tokens)
 	if *bench {
 		<-exited
 		fmt.Printf("elapsed %v\n", time.Since(start))
@@ -48,7 +54,7 @@ func main() {
 	}
 	select {
 	case <-exited:
-	case <-time.After(scriptDuration(*script) + *wait):
+	case <-time.After(scriptDuration(tokens) + *wait):
 	}
 	t.Mu.Lock()
 	defer t.Mu.Unlock()
@@ -82,12 +88,23 @@ func main() {
 	s.Close()
 }
 
+func fatal(err error) {
+	fmt.Fprintln(os.Stderr, "termite-headless:", err)
+	os.Exit(1)
+}
+
 type token struct {
 	text string
 	wait time.Duration
 }
 
-func parseScript(s string) []token {
+// keys are the named keys a script can send.
+var keys = map[string]string{
+	"enter": "\r", "esc": "\x1b", "tab": "\t", "bs": "\x7f", "space": " ",
+	"up": "\x1b[A", "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D",
+}
+
+func parseScript(s string) ([]token, error) {
 	var out []token
 	for len(s) > 0 {
 		i := strings.IndexByte(s, '{')
@@ -108,35 +125,50 @@ func parseScript(s string) []token {
 		if len(cmd) == 0 {
 			continue
 		}
-		keys := map[string]string{"enter": "\r", "esc": "\x1b", "tab": "\t", "up": "\x1b[A", "down": "\x1b[B",
-			"right": "\x1b[C", "left": "\x1b[D", "bs": "\x7f", "space": " "}
+		arg := ""
+		if len(cmd) > 1 {
+			arg = cmd[1]
+		}
 		switch cmd[0] {
 		case "wait":
-			ms, _ := strconv.Atoi(cmd[1])
+			ms, err := strconv.Atoi(arg)
+			if err != nil {
+				return nil, fmt.Errorf("{wait %s}: want milliseconds", arg)
+			}
 			out = append(out, token{wait: time.Duration(ms) * time.Millisecond})
 		case "ctrl":
-			out = append(out, token{text: string(rune(strings.ToUpper(cmd[1])[0]) & 0x1f)})
+			if len(arg) != 1 {
+				return nil, fmt.Errorf("{ctrl %s}: want one key", arg)
+			}
+			out = append(out, token{text: string(rune(strings.ToUpper(arg)[0]) & 0x1f)})
 		case "hex":
-			b, _ := hex.DecodeString(cmd[1])
+			b, err := hex.DecodeString(arg)
+			if err != nil {
+				return nil, fmt.Errorf("{hex %s}: %v", arg, err)
+			}
 			out = append(out, token{text: string(b)})
 		default:
-			out = append(out, token{text: keys[cmd[0]]})
+			k, ok := keys[cmd[0]]
+			if !ok {
+				return nil, fmt.Errorf("unknown script token {%s}", strings.Join(cmd, " "))
+			}
+			out = append(out, token{text: k})
 		}
 	}
-	return out
+	return out, nil
 }
 
-func scriptDuration(s string) time.Duration {
+func scriptDuration(tokens []token) time.Duration {
 	var d time.Duration
-	for _, t := range parseScript(s) {
+	for _, t := range tokens {
 		d += t.wait + 20*time.Millisecond
 	}
 	return d + 300*time.Millisecond
 }
 
-func runScript(s *pty.Session, script string) {
+func runScript(s *pty.Session, tokens []token) {
 	time.Sleep(300 * time.Millisecond)
-	for _, t := range parseScript(script) {
+	for _, t := range tokens {
 		if t.wait > 0 {
 			time.Sleep(t.wait)
 			continue

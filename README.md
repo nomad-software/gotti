@@ -3,8 +3,8 @@
 A GPU-rendered terminal emulator for Linux, written in Go with Qt 6 (via
 [miqt](https://github.com/mappu/miqt)) and OpenGL 3.3 core. It targets
 `TERM=xterm-256color` and implements the xterm subset that shells, vim,
-tmux, htop, less and fzf actually use, plus tabs, splits
-and saved layouts.
+tmux, htop, less and fzf actually use, plus tabs, splits and saved
+layouts.
 
 ![Termite with two tabs: the first split into vim editing Go source with syntax colours beside two stacked shells, one showing bold, italic, underlined, curly-underlined, struck-through and inverse text, the 16-colour palette, a truecolor gradient, box drawing around wide CJK characters and an emoji, braille and shade blocks and an underlined hyperlink, the other a coloured directory listing; each pane has a header with its directory](docs/screenshot.png)
 
@@ -43,10 +43,14 @@ vim).
   cursor-aligned Alt+Arrow navigation, input broadcast to a tab or a
   group of panes, saved layouts that reopen each pane in its directory
   and command, and pane headers that show where each shell is.
+- **Safe with what you paste and run.** Bracketed pastes can't be broken
+  out of, multi-line pastes into programs that don't bracket them ask
+  first, programs may set the clipboard but not read it unless you allow
+  it, and titles set by programs are never shown.
 - **Comfortable to configure.** One JSON file, with problems shown in
-  place while the rest still loads.
-  There is also a native Options dialog with a theme editor and live
-  preview, and a shortcut editor that catches clashes.
+  place while the rest still loads. There is also a native Options dialog
+  with a theme editor and live preview, and a shortcut editor that catches
+  clashes.
 
 ## Build and run
 
@@ -100,12 +104,11 @@ scrollbar, and cursor style and blinking. Its Colours tab lists the colour
 themes: pick the one to use, edit its name, terminal and pane header
 colours and 16-colour palette with a live preview, add, duplicate or
 remove themes, and restore the built-in ones (Solarized Dark, Solarized
-Light, Ambience). Its Keyboard Shortcuts tab rebinds every action:
+Light, Ambiance). Its Keyboard Shortcuts tab rebinds every action:
 click a field, press the keys, or clear it to unbind. Shortcuts used by
 more than one action are reported and not saved. OK or Apply saves to
-`config.json` and applies at once. The
-window size and maximized state are saved when a window closes and used
-for new windows.
+`config.json` and applies at once. The window size and maximized state are
+saved when a window closes and used for new windows.
 
 | Key | Default | Notes |
 | --- | --- | --- |
@@ -114,7 +117,7 @@ for new windows.
 | `line_height` | `1.0` | multiplier |
 | `theme` | `"solarized-dark"` | id of the theme to use, a key of `themes` |
 | `window_theme` | `"system"` | `system`, `light`, `dark`: colours of the menus, dialogs and tab bar |
-| `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection` and `selection_text` are optional |
+| `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection`, `selection_text` and the pane header colours `header_background`, `header_focused_background`, `header_text` and `header_focused_text` are optional |
 | `scrollback` | `10000` | lines |
 | `cursor_style` | `"block"` | `block`, `beam`, `underline`; programs may choose another shape (DECSCUSR) until they reset it |
 | `cursor_blink` | `false` | allows blinking when an app requests it |
@@ -148,10 +151,11 @@ for new windows.
 
 Right-click opens the context menu (Shift+right-click while an
 application uses the mouse). It covers copy and paste, opening or copying
-the link under the pointer, splitting,
-broadcast, layouts, find, clear scrollback, reset and Options….
-The menu and dialogs use the desktop's native Qt style; the colour theme
-applies only to the terminal, tabs and splitters.
+the link under the pointer, splitting, broadcast, layouts, find, clear
+scrollback, reset and Options…. With `window_theme` set to `system` the
+menus and dialogs use the desktop's own style; `light` and `dark` give
+them termite's own. The colour theme applies to the terminal, pane
+headers and search bar.
 
 Moving focus with Alt+Arrows goes to the adjacent pane on that side that
 lines up with the text cursor, as in tmux and vim, never to a pane that
@@ -217,6 +221,7 @@ runs on systems at least as new.
 ```
 main.go              Qt application entry point, flags, profiling
 test/headless        runs a program through the emulator core and prints the screen (testing)
+test/guibench        GUI benchmark workloads and runner (make guibench)
 internal/term        emulator core: cells, scrollback ring, parser, xterm emulation (no GUI deps)
 internal/pty         child process on a PTY; one reader+parser goroutine per pane
 internal/input       key (xterm + kitty), mouse (SGR) and paste encoding
@@ -233,9 +238,10 @@ packaging            AppImage script and AppRun, desktop entry, icon SVG, screen
 Data flow per pane: the reader goroutine reads the PTY, locks the
 terminal, parses, unlocks and requests a redraw. Requests are coalesced
 and paced to the screen's refresh rate (the first output after a pause
-paints at once), so floods of output never render per chunk. On paint, the main thread locks
-briefly to copy only the damaged rows, then builds instances and draws
-without the lock. All Qt and GL calls happen on the main thread.
+paints at once), so floods of output never render per chunk. On paint,
+the main thread locks briefly to copy only the damaged rows, then builds
+instances and draws without the lock. All Qt and GL calls happen on the
+main thread.
 
 Key implementation points:
 - **Cells** are 16 bytes with no pointers: rune, packed fg/bg (`kind<<24 | index-or-RGB`), 16-bit flags, and a 16-bit index into an interned table for rare data (underline colour, OSC 8 link).
@@ -246,6 +252,7 @@ Key implementation points:
 - **Glyphs** are rasterized once with QPainter, which gives Qt's font fallback, colour emoji and shaping for ligatures. They live in a shared RGBA atlas, since all pane contexts share GL resources.
 - **Box drawing**, block elements, braille, Powerline separators and DEC scan lines are drawn procedurally, so they join cleanly between cells.
 - **Decorations** (all underline styles, strike, overline, cursor shapes) are atlas sprites, so they need no extra draw calls.
+- **Paste**: with bracketed paste, any paste markers inside the text are removed (repeatedly, so removing one can't assemble another), so pasted text can never end the paste early and run as typed commands. Without it, control characters other than tab and newline are dropped.
 - **Search** highlighting costs O(1) per cell however many matches there are: matches are sorted, so each row walks them with a forward-only cursor.
 
 ## Testing
@@ -254,7 +261,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
-go test ./internal/term -fuzz FuzzParser              # parser fuzzing
+make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)
 CLEARMEM=1 go test ./internal/term -run ClearScrollbackMemory -v  # memory Clear Scrollback returns

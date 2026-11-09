@@ -27,7 +27,6 @@ func (t *Terminal) oscDispatch(data []byte) {
 	switch n {
 	case 0, 2:
 		t.Title = sanitizeTitle(string(rest))
-		t.events |= EvTitle
 	case 1:
 		// icon name: ignored
 	case 4:
@@ -78,7 +77,6 @@ func sanitizeTitle(s string) string {
 func (t *Terminal) paletteChanged() {
 	t.primary.MarkAllDirty()
 	t.alt.MarkAllDirty()
-	t.events |= EvPalette
 }
 
 func formatColor(c uint32) string {

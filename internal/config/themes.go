@@ -84,7 +84,7 @@ var BuiltinThemes = map[string]ThemeSpec{
 	// Ubuntu's terminal look: Tango palette on the aubergine background
 	// used with the Ambiance desktop theme.
 	"ubuntu-ambiance": {
-		Name: "Ambience", Foreground: "#ffffff", Background: "#300a24",
+		Name: "Ambiance", Foreground: "#ffffff", Background: "#300a24",
 		Cursor: "#ffffff", CursorText: "#300a24", Selection: "#5e2750", SelectionText: "#ffffff",
 		Palette: []string{
 			"#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
@@ -95,16 +95,6 @@ var BuiltinThemes = map[string]ThemeSpec{
 
 // DefaultTheme is the theme used when none is configured.
 const DefaultTheme = "solarized-dark"
-
-// builtinThemes returns a copy of the built-in theme list.
-func builtinThemes() map[string]ThemeSpec {
-	m := make(map[string]ThemeSpec, len(BuiltinThemes))
-	for id, t := range BuiltinThemes {
-		t.Palette = append([]string(nil), t.Palette...)
-		m[id] = t
-	}
-	return m
-}
 
 // Resolve parses the theme's colours.
 func (s ThemeSpec) Resolve() (Theme, error) {
@@ -177,10 +167,12 @@ func (c *Config) ThemeIDs() []string {
 // ResolveTheme returns the selected theme. A missing or broken theme falls
 // back to the built-in default.
 func (c *Config) ResolveTheme() Theme {
-	th, err := c.Themes[c.Theme].Resolve()
-	if _, ok := c.Themes[c.Theme]; !ok || err != nil {
-		th, _ = BuiltinThemes[DefaultTheme].Resolve()
+	if spec, ok := c.Themes[c.Theme]; ok {
+		if th, err := spec.Resolve(); err == nil {
+			return th
+		}
 	}
+	th, _ := BuiltinThemes[DefaultTheme].Resolve()
 	return th
 }
 

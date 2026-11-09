@@ -3,7 +3,6 @@ package ui
 import (
 	"math"
 	"os"
-	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -15,39 +14,7 @@ import (
 // shortcutLabel returns the display form of the key bound to action
 // ("Ctrl+Shift+C"), or "" when unbound.
 func (a *App) shortcutLabel(action string) string {
-	s := a.cfg.Keybindings[action]
-	if s == "" || s == "none" {
-		return ""
-	}
-	ch, err := config.ParseChord(s)
-	if err != nil {
-		return ""
-	}
-	names := map[string]string{
-		"equal": "=", "minus": "-", "plus": "+", "pageup": "PgUp", "pagedown": "PgDown",
-		"comma": ",", "period": ".", "slash": "/", "backslash": "\\", "semicolon": ";",
-		"apostrophe": "'", "bracketleft": "[", "bracketright": "]", "grave": "`",
-	}
-	var parts []string
-	if ch.Ctrl {
-		parts = append(parts, "Ctrl")
-	}
-	if ch.Shift {
-		parts = append(parts, "Shift")
-	}
-	if ch.Alt {
-		parts = append(parts, "Alt")
-	}
-	if ch.Super {
-		parts = append(parts, "Super")
-	}
-	k := ch.Key
-	if n, ok := names[k]; ok {
-		k = n
-	} else if len(k) > 0 {
-		k = strings.ToUpper(k[:1]) + k[1:]
-	}
-	return strings.Join(append(parts, k), "+")
+	return chordText(a.cfg.Keybindings[action], "Super")
 }
 
 // menuBuilder adds actions with shortcut hints.
@@ -79,7 +46,7 @@ func (b menuBuilder) sub(title string) menuBuilder {
 }
 
 // radio adds an exclusive group of checkable items.
-func (b menuBuilder) radio(labels, values []string, current string, fn func(string)) {
+func (b menuBuilder) radio(labels []string, values []int, current int, fn func(int)) {
 	g := qt.NewQActionGroup(b.m.QObject)
 	g.SetExclusive(true)
 	for i, l := range labels {
@@ -120,9 +87,8 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 
 	// broadcast
 	bc := b.sub("Broadcast Input")
-	mode := map[int]string{BroadcastOff: "off", BroadcastAll: "all", BroadcastGroup: "group"}[a.broadcast]
-	bc.radio([]string{"Off", "All Panes in Tab", "Group"}, []string{"off", "all", "group"}, mode, func(v string) {
-		a.broadcast = map[string]int{"off": BroadcastOff, "all": BroadcastAll, "group": BroadcastGroup}[v]
+	bc.radio([]string{"Off", "All Panes in Tab", "Group"}, []int{BroadcastOff, BroadcastAll, BroadcastGroup}, a.broadcast, func(mode int) {
+		a.broadcast = mode
 		a.refreshBorders()
 	})
 	bc.m.AddSeparator()

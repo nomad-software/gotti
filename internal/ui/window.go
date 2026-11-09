@@ -25,7 +25,7 @@ func newWindow(a *App) *Window {
 	w.w = qt.NewQWidget(nil)
 	w.w.SetObjectName("termiteWindow")
 	w.w.SetWindowTitle("")
-	w.w.SetWindowIcon(appIcon())
+	w.w.SetWindowIcon(AppIcon())
 	width, height := a.cfg.WindowWidth, a.cfg.WindowHeight
 	if width < 200 || height < 100 {
 		width, height = 900, 560

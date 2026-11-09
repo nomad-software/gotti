@@ -11,19 +11,19 @@ import (
 // $TERM_PROGRAM_VERSION.
 const Version = "1.0"
 
-// Event flags raised by the terminal for the UI layer.
+// Event flags raised by the terminal for the UI layer. Changes the
+// renderer sees for itself (screen contents, colours, the alternate screen)
+// raise none. Titles set by programs are kept (for the title stack) but
+// not shown, so they raise none either.
 type Event uint32
 
 const (
-	EvTitle Event = 1 << iota
-	EvBell
-	EvClipboard // ClipboardWrites has entries
+	EvBell      Event = 1 << iota
+	EvClipboard       // ClipboardWrites has entries
 	EvClipboardQuery
 	EvCwd
-	EvAltScreen
 	EvMouseMode
 	EvCursorStyle
-	EvPalette
 	EvSync // synchronized output ended
 )
 
@@ -748,7 +748,6 @@ func (t *Terminal) switchScreen(alt, clearAlt bool) {
 	t.buf.MarkAllDirty()
 	t.top, t.bot = 0, t.rows-1
 	t.lastPrint.ok = false
-	t.events |= EvAltScreen
 }
 
 // ---------------------------------------------------------------- escapes
@@ -813,7 +812,7 @@ func (t *Terminal) fullReset() {
 	t.alt = NewBuffer(t.cols, t.rows, 0)
 	t.buf = t.primary
 	t.Title = ""
-	t.events |= EvTitle | EvMouseMode | EvCursorStyle | EvAltScreen
+	t.events |= EvMouseMode | EvCursorStyle
 }
 
 func (t *Terminal) softReset() {
@@ -1032,7 +1031,6 @@ func (t *Terminal) windowOp() {
 		if n := len(t.titleStack); n > 0 {
 			t.Title = t.titleStack[n-1]
 			t.titleStack = t.titleStack[:n-1]
-			t.events |= EvTitle
 		}
 	}
 }

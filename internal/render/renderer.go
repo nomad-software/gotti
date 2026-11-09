@@ -73,12 +73,10 @@ type Renderer struct {
 	Cache *GlyphCache
 	Style Style
 
-	progRect, progGlyph       uint32
-	vaoRect, vaoGlyph         uint32
-	quadVBO, rectVBO, glyVBO  uint32
-	uVPRect, uVPGlyph, uAtlas int32
-	uAtlasSize                int32
-	glReady                   bool
+	// GL objects of this renderer's context (programs are shared).
+	vaoRect, vaoGlyph        uint32
+	quadVBO, rectVBO, glyVBO uint32
+	glReady                  bool
 
 	cols, rows int
 	fbW, fbH   int
@@ -376,8 +374,6 @@ func (r *Renderer) InitGL() error {
 	if err := initPrograms(); err != nil {
 		return err
 	}
-	r.progRect, r.progGlyph = shared.progRect, shared.progGlyph
-	r.uVPRect, r.uVPGlyph, r.uAtlas, r.uAtlasSize = shared.uVPRect, shared.uVPGlyph, shared.uAtlas, shared.uAtlasSize
 
 	quad := []float32{0, 0, 1, 0, 0, 1, 1, 1}
 	gl.GenBuffers(1, &r.quadVBO)
@@ -653,7 +649,7 @@ func (r *Renderer) buildRow(y int) {
 			}
 			// optional ligatures over runs of ASCII punctuation
 			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 && ligatureStart[c.Ch] {
-				if n, s := r.ligatureAt(line, x, style, fg); n > 1 {
+				if n, s := r.ligatureAt(line, x, style); n > 1 {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them
 					for k := 1; k < n; k++ {
@@ -736,7 +732,7 @@ func (r *Renderer) buildRow(y int) {
 	}
 }
 
-func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8, fg uint32) (int, Sprite) {
+func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite) {
 	for _, cand := range ligatureCandidates {
 		n := len(cand)
 		if x+n > len(line) {
@@ -866,18 +862,18 @@ func (r *Renderer) Render() {
 	gl.Enable(gl.BLEND)
 	gl.BlendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
 
-	gl.UseProgram(r.progRect)
-	gl.Uniform2f(r.uVPRect, float32(r.fbW), float32(r.fbH))
+	gl.UseProgram(shared.progRect)
+	gl.Uniform2f(shared.uVPRect, float32(r.fbW), float32(r.fbH))
 	gl.BindVertexArray(r.vaoRect)
 	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, int32(len(r.packedRects)))
 
 	tex, size := r.Cache.Texture()
-	gl.UseProgram(r.progGlyph)
-	gl.Uniform2f(r.uVPGlyph, float32(r.fbW), float32(r.fbH))
-	gl.Uniform2f(r.uAtlasSize, float32(size), float32(size))
+	gl.UseProgram(shared.progGlyph)
+	gl.Uniform2f(shared.uVPGlyph, float32(r.fbW), float32(r.fbH))
+	gl.Uniform2f(shared.uAtlasSize, float32(size), float32(size))
 	gl.ActiveTexture(gl.TEXTURE0)
 	gl.BindTexture(gl.TEXTURE_2D, tex)
-	gl.Uniform1i(r.uAtlas, 0)
+	gl.Uniform1i(shared.uAtlas, 0)
 	gl.BindVertexArray(r.vaoGlyph)
 	gl.DrawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, int32(len(r.packedGlyphs)))
 	r.Drawn = len(r.packedRects) + len(r.packedGlyphs)
