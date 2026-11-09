@@ -72,6 +72,11 @@ func (a *App) reload(c *config.Config, err error) {
 	if fontChanged {
 		a.rebuildFonts()
 	}
+	// Restyle first: the header font comes from the stylesheet, and
+	// layoutHeader elides with it.
+	for _, w := range a.windows {
+		w.applyTheme()
+	}
 	for _, p := range a.allPanes() {
 		a.applyTerminalSettings(p)
 		p.layoutHeader()
@@ -83,9 +88,6 @@ func (a *App) reload(c *config.Config, err error) {
 		p.updateGridSize()
 		p.updateBlinkTimer()
 		p.invalidate()
-	}
-	for _, w := range a.windows {
-		w.applyTheme()
 	}
 }
 

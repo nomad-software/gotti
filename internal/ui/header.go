@@ -18,6 +18,7 @@ const headerRefresh = 300 * time.Millisecond
 func (p *Pane) setupHeader() {
 	p.header = qt.NewQLabel(p.Widget)
 	p.header.SetObjectName("gottiHeader")
+	p.header.SetAlignment(qt.AlignCenter)
 	// The label must never widen the pane: long paths are elided instead.
 	p.header.SetMinimumWidth(1)
 	p.header.SetSizePolicy2(qt.QSizePolicy__Ignored, qt.QSizePolicy__Fixed)
@@ -49,6 +50,7 @@ func (p *Pane) refreshHeader() {
 	if dir != p.headerDir {
 		p.headerDir = dir
 		p.layoutHeader()
+		p.tab.win.updateTitles()
 	}
 	if prog := p.S.ForegroundName(); prog != p.program {
 		p.program = prog

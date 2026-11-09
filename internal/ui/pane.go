@@ -975,11 +975,12 @@ func (p *Pane) cwd() string {
 	return p.Cwd
 }
 
-// displayTitle returns the title for tabs and the window.
-// It is the foreground program's name: titles set by programs (which
-// shells often fill with user@host:path) are kept off the title bar; the
-// directory is shown in the pane's header instead.
-func (p *Pane) displayTitle() string {
+// tabTitle returns the tab title: the directory shown in the pane's
+// header, or the program name until the directory is known.
+func (p *Pane) tabTitle() string {
+	if p.headerDir != "" {
+		return abbreviateHome(p.headerDir)
+	}
 	if p.program == "" {
 		p.program = p.S.ForegroundName()
 	}

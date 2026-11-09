@@ -112,8 +112,9 @@ lines up with the text cursor, as in tmux and vim, never to a pane that
 only touches at a corner.
 
 Every pane has a header showing its current directory, from the shell's
-OSC 7 report or the foreground process. The tab and window titles show the
-running program rather than titles set by programs.
+OSC 7 report or the foreground process. Each tab is named after its
+focused pane's header; the window title is just the app name. Titles set
+by programs are ignored.
 
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs

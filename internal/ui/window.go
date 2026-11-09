@@ -68,6 +68,9 @@ func newWindow(a *App) *Window {
 	return w
 }
 
+// headerFontScale sizes the pane header font relative to the terminal's.
+const headerFontScale = 0.85
+
 func (w *Window) applyTheme() {
 	th := w.app.theme
 	bg := fmt.Sprintf("#%06x", th.Background)
@@ -76,19 +79,16 @@ func (w *Window) applyTheme() {
 	// The rules name gotti's own widgets only, so menus and dialogs keep
 	// the desktop's native look.
 	w.w.SetStyleSheet(fmt.Sprintf(`
-		QWidget#gottiWindow, QWidget#gottiTab, QWidget#gottiPane { background: %[1]s; }
-		QTabWidget#gottiTabs::pane { border: none; }
-		QTabBar#gottiTabBar { background: %[1]s; }
-		QTabBar#gottiTabBar::tab { padding: 4px 12px; border: none; background: %[1]s; color: %[2]s; }
-		QTabBar#gottiTabBar::tab:selected { background: %[3]s; }
+		QWidget#gottiTab, QWidget#gottiPane { background: %[1]s; }
 		QSplitter#gottiSplit::handle { background: %[3]s; }
 		QLineEdit#gottiSearch { background: %[1]s; color: %[2]s; border: 1px solid %[3]s; padding: 3px; }
 		QLineEdit#gottiSearch[notFound="true"] { color: #dc322f; }
-		QLabel#gottiHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; }
-		QLabel#gottiHeader[focused="true"] { background: %[3]s; color: %[2]s; }
+		QLabel#gottiHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; font-family: %[6]q; font-size: %.1[7]fpt; }
+		QLabel#gottiHeader[focused="true"] { color: %[2]s; }
 		QLabel#gottiHeader[problem="true"] { color: #dc322f; }
-	`, bg, fg, sel, fmt.Sprintf("#%06x", config.Mix(th.Background, th.Foreground, 0.06)),
-		fmt.Sprintf("#%06x", config.Mix(th.Background, th.Foreground, 0.55))))
+	`, bg, fg, sel, fmt.Sprintf("#%06x", config.Mix(th.Background, 0x000000, 0.4)), // 40% black over the background
+		fmt.Sprintf("#%06x", config.Mix(th.Background, th.Foreground, 0.55)),
+		w.app.cfg.FontFamily, w.app.cfg.FontSize*headerFontScale))
 }
 
 func (w *Window) allPanes() []*Pane {
@@ -166,19 +166,13 @@ func (w *Window) updateTitles() {
 		if p == nil {
 			continue
 		}
-		title := p.displayTitle()
+		title := p.tabTitle()
 		short := title
 		if r := []rune(short); len(r) > 30 {
-			short = string(r[:29]) + "…"
-		}
-		if n := len(t.Panes()); n > 1 {
-			short = fmt.Sprintf("%s [%d]", short, n)
+			short = "…" + string(r[len(r)-29:]) // keep the end, like the header
 		}
 		w.tabs.SetTabText(w.indexOf(t), short)
 		w.tabs.SetTabToolTip(w.indexOf(t), title)
-		if w.indexOf(t) == w.tabs.CurrentIndex() {
-			w.w.SetWindowTitle(title) // Qt adds " — Gotti"
-		}
 	}
 }
 
