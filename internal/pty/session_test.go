@@ -101,3 +101,32 @@ func TestCloseWhileQuerying(t *testing.T) {
 		}
 	}
 }
+
+// TestChildEnvironment checks what a shell inherits: termite's TERM, and
+// none of the variables the AppImage runtime sets for termite itself.
+func TestChildEnvironment(t *testing.T) {
+	t.Setenv("APPIMAGE", "/x/Termite.AppImage")
+	t.Setenv("APPDIR", "/tmp/.mount_x")
+	t.Setenv("OWD", "/home/me")
+	t.Setenv("TERM", "dumb")
+	tm := term.New(80, 5, 100)
+	s, err := Start(tm, Options{Command: []string{"sh", "-c", `echo "[$TERM|${APPIMAGE-}|${APPDIR-}|${OWD-}]"`}, Cols: 80, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan struct{})
+	s.OnExit = func() { close(exited) }
+	s.Run()
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("child did not exit")
+	}
+	tm.Mu.Lock()
+	defer tm.Mu.Unlock()
+	b := tm.Buf()
+	top := b.ScreenTopAbs()
+	if got := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top, Col: 80}, false); got != "[xterm-256color|||]" {
+		t.Fatalf("child saw %q", got)
+	}
+}

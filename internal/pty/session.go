@@ -79,6 +79,12 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 		switch k {
 		case "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "VTE_VERSION", "COLUMNS", "LINES":
 			continue
+		// Set by the AppImage runtime for termite itself. A shell must not
+		// inherit them: a program started from it would think it was
+		// running from the AppImage (termite's own desktop entry would
+		// then point at the AppImage when it was not run from it).
+		case "APPIMAGE", "APPDIR", "ARGV0", "OWD":
+			continue
 		}
 		env = append(env, e)
 	}

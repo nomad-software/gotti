@@ -20,6 +20,14 @@ README.md for features, config and architecture.
 - Measure before and after any performance change (`make bench`,
   `make guibench`, `TERMITE_DEBUG=frames`, `--cpuprofile`), and report the
   numbers whichever way they go.
+- `make appimage` runs `packaging/appimage.sh` (downloads linuxdeploy into
+  `build/tools`, output in `build/`). Releases come from
+  `.github/workflows/appimage.yml`, adapted from Prism's: `v` tags or by hand,
+  Ubuntu 22.04 container (glibc 2.35) with aqtinstall's Qt 6.9.3, tests
+  first, then the script. The script refuses to make an AppImage missing the
+  xcb/Wayland/GL plugins or the Qt OpenGL modules, or containing libGL/libEGL
+  (the system's must be used), and starts the result under `xvfb-run` with
+  Mesa's software GL (offscreen can't give termite a GL context).
 - `test/termite-headless -size 80x24 -script '...' -- prog` prints the screen of a
   program run through the emulator core (vim, vttest, …) without a GUI.
 
@@ -64,6 +72,9 @@ README.md for features, config and architecture.
 - Redraws after output are paced to the refresh rate (`Pane.requestRedraw`).
   Xvfb has no vsync, so without pacing cheap frames run unthrottled and
   llvmpipe's threads steal CPU from the parser (cat got 30% slower).
+- Shells must not inherit the AppImage runtime's `APPIMAGE`, `APPDIR`,
+  `ARGV0`, `OWD` (stripped in `pty.Start`), and `packaging/AppRun` must not
+  add anything to the environment: everything in it reaches the shells.
 - Raw syscalls on the PTY (poll, ioctl) go through `Session.rc.Control`,
   never a saved descriptor number: Close may run concurrently and the
   number could be reused.

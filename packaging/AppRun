@@ -1,0 +1,13 @@
+#!/bin/sh
+# What an AppImage runs when it is started. The program is started from
+# where it is inside the AppImage, beside the file (qt.conf) that tells Qt
+# where the plugins in the AppImage are: started through a link to it from
+# another folder, newer versions of Qt look for that file in the wrong place
+# and find no way to open a window.
+#
+# Nothing is added to the environment here (no LD_LIBRARY_PATH, no Qt
+# paths): termite finds its libraries through the rpath linuxdeploy gives
+# it, and everything in its environment is passed on to the shells it
+# starts, which must see the system as it is.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/termite" "$@"

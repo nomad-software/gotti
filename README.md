@@ -50,7 +50,8 @@ vim).
 
 ## Build and run
 
-Requirements: Go 1.27+, Qt 6 development files (Widgets, OpenGL,
+The easiest way to get Termite is the AppImage from a release (see
+[AppImage](#appimage) below). To build it yourself, you need: Go 1.27+, Qt 6 development files (Widgets, OpenGL,
 OpenGLWidgets), OpenGL 3.3 drivers, a C++17 compiler.
 
 ```sh
@@ -59,6 +60,7 @@ make build                   # or: go build
 ./termite -- htop            # run a command
 ./termite --layout work      # open a saved layout
 ./termite --write-config     # write the default config.json
+make appimage                # build/Termite-<version>-x86_64.AppImage
 ```
 
 On every start, Termite writes a desktop entry
@@ -171,6 +173,44 @@ split tree, sizes, each pane's working directory and command for every tab.
 Loading a layout replaces the window's tabs with its own. Layouts can be
 removed from the Layouts menu.
 
+## AppImage
+
+Releases for Linux are an AppImage, `Termite-*-x86_64.AppImage`: one file
+with Qt inside it, which runs without installing anything. Make it
+executable and run it. On its first start it adds itself to the desktop's
+menus (see above), so it can be started and pinned like any installed
+application.
+
+It is built by a GitHub workflow (`.github/workflows/appimage.yml`), which
+runs the tests and then `packaging/appimage.sh` on Ubuntu 22.04 with Qt's
+own build of Qt 6.9:
+
+- Pushing a tag starting with `v` builds it and attaches it to a release of
+  that name: `git tag v1.0.0 && git push origin v1.0.0`.
+- It can also be run by hand from the Actions tab of the repository
+  (AppImage > Run workflow), which leaves the AppImage as an artifact of the
+  run to download.
+
+It runs under both X11 and Wayland, and on GTK desktops takes its colours,
+light or dark, from the desktop through Qt's GTK theme plugin. OpenGL and
+the C library (glibc) are deliberately not put in it: they have to match
+the system's graphics drivers, so the system's own are used. It is built on
+an old distribution instead, and runs on any with glibc 2.35 or later:
+Ubuntu 22.04, Debian 12, Fedora 36 and anything newer, or rolling
+distributions such as CachyOS and Arch. Before an AppImage is made, the
+script checks that the X11, Wayland and GL plugins are in it and no GL
+library is; afterwards it starts it in a virtual X server with Mesa's
+software renderer, so a build that can't open a window and draw is never
+released.
+
+Shells started from the AppImage see the system as it is: no library paths
+are added, and the variables the AppImage runtime sets for Termite itself
+(`APPIMAGE`, `APPDIR`, `ARGV0`, `OWD`) are not passed on.
+
+`make appimage` runs the same script locally (it downloads linuxdeploy into
+`build/tools`), but an AppImage built on a newer system only runs on
+systems at least as new.
+
 ## Architecture
 
 ```
@@ -185,6 +225,8 @@ internal/ui          windows, tabs, splits, panes, layouts, actions
 internal/config      JSON config, in-place setting writes, themes, key chords
 internal/desktop     desktop entry and icon install
 internal/appicon     embedded program icon
+packaging            AppImage script and AppRun, desktop entry, icon SVG, screenshot scripts
+.github/workflows    appimage.yml: builds the AppImage on v tags or by hand
 ```
 
 Data flow per pane: the reader goroutine reads the PTY, locks the

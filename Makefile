@@ -4,7 +4,7 @@ BINARY := termite
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test fuzz bench guibench vet icons screenshot clean
+.PHONY: build run test fuzz bench guibench vet icons screenshot appimage clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -39,6 +39,13 @@ vet:
 icons:
 	rsvg-convert -w 256 -h 256 packaging/termite.svg -o internal/appicon/appicon.png
 
+# Builds build/Termite-<version>-x86_64.AppImage with the Qt found by
+# pkg-config; see packaging/appimage.sh. Releases are built by
+# .github/workflows/appimage.yml on Ubuntu 22.04, so they run on older
+# systems than one built here would.
+appimage:
+	packaging/appimage.sh
+
 # Draws the README screenshot, docs/screenshot.png, from a demo layout in a
 # virtual X server. Needs Xvfb, ImageMagick and vim.
 screenshot:
@@ -46,3 +53,4 @@ screenshot:
 
 clean:
 	rm -f $(BINARY) test/termite-headless
+	rm -rf build
