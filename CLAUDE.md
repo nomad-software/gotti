@@ -20,8 +20,10 @@ README.md for features, config and architecture.
 - Measure before and after any performance change (`make bench`,
   `make guibench`, `TERMITE_DEBUG=frames`, `--cpuprofile`), and report the
   numbers whichever way they go.
-- `make appimage` runs `packaging/appimage.sh` (downloads linuxdeploy into
-  `build/tools`, output in `build/`). Releases come from
+- `make appimage` runs `packaging/appimage.sh`, which works in a temporary
+  folder outside the project (removed on exit) and leaves only
+  `Termite-<version>-x86_64.AppImage` in the project folder. Never create a
+  `build/` folder in the project. Releases come from
   `.github/workflows/appimage.yml`, adapted from Prism's: `v` tags or by hand,
   Ubuntu 22.04 container (glibc 2.35) with aqtinstall's Qt 6.9.3, tests
   first, then the script. The script refuses to make an AppImage missing the

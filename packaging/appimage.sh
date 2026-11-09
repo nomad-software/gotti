@@ -1,7 +1,9 @@
 #!/bin/sh
 # Builds Termite and packs it, with the Qt libraries it needs, into an
 # AppImage: one file that runs on most Linux systems without installing
-# anything. The result is build/Termite-<version>-x86_64.AppImage.
+# anything. The result is Termite-<version>-x86_64.AppImage in the folder
+# OUT (the project folder by default). Everything else is done in a
+# temporary folder outside the project, removed when the script ends.
 #
 # It is meant to be run on an old distribution (the GitHub workflow uses
 # Ubuntu 22.04, with Qt's own build of Qt), as an AppImage runs on systems as
@@ -14,15 +16,17 @@
 set -eu
 
 cd "$(dirname "$0")/.."
+ROOT="$PWD"
 
 VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 ARCH=x86_64
-BUILD=build
+OUT="${OUT:-$ROOT}"
+BUILD="$(mktemp -d "${TMPDIR:-/tmp}/termite-appimage.XXXXXX")"
+trap 'rm -rf "$BUILD"' EXIT
 APPDIR="$BUILD/AppDir"
 TOOLS="$BUILD/tools"
 OUTPUT="Termite-$VERSION-$ARCH.AppImage"
 
-rm -rf "$APPDIR"
 mkdir -p "$TOOLS"
 
 echo "Building Termite $VERSION"
@@ -64,7 +68,7 @@ export QMAKE="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
 # GitHub workflow uses, has no others.
 PLUGINS="$("$QMAKE" -query QT_INSTALL_PLUGINS)"
 if [ -n "$(find "$PLUGINS" -mindepth 2 -maxdepth 2 -name '*.so' ! -name 'lib*' | head -n 1)" ]; then
-	STAGE="$PWD/$BUILD/qt-plugins"
+	STAGE="$BUILD/qt-plugins"
 	rm -rf "$STAGE"
 	for dir in "$PLUGINS"/*/; do
 		name="$(basename "$dir")"
@@ -75,7 +79,7 @@ if [ -n "$(find "$PLUGINS" -mindepth 2 -maxdepth 2 -name '*.so' ! -name 'lib*' |
 	done
 
 	REAL_QMAKE="$QMAKE"
-	QMAKE="$PWD/$TOOLS/qmake"
+	QMAKE="$TOOLS/qmake"
 	cat > "$QMAKE" <<WRAPPER
 #!/bin/sh
 "$REAL_QMAKE" "\$@" | sed "s|$PLUGINS|$STAGE|"
@@ -110,9 +114,9 @@ export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
 "$TOOLS/linuxdeploy-$ARCH.AppImage" \
 	--appdir "$APPDIR" \
 	--executable "$BUILD/termite" \
-	--desktop-file packaging/termite.desktop \
+	--desktop-file "$ROOT/packaging/termite.desktop" \
 	--icon-file "$BUILD/termite.png" \
-	--custom-apprun packaging/AppRun \
+	--custom-apprun "$ROOT/packaging/AppRun" \
 	--plugin qt
 
 # Qt asks the desktop what it looks like through a platform theme, and on
@@ -161,8 +165,8 @@ if [ "$missing" -ne 0 ]; then
 	exit 1
 fi
 
-"$TOOLS/linuxdeploy-$ARCH.AppImage" --appdir "$APPDIR" --output appimage
-mv "$OUTPUT" "$BUILD/$OUTPUT"
+# The tool writes the AppImage into the folder it runs in.
+(cd "$BUILD" && "$TOOLS/linuxdeploy-$ARCH.AppImage" --appdir "$APPDIR" --output appimage)
 
 # The AppImage is started in a virtual X server with Mesa's software
 # renderer, so its GL widget really draws, with its settings and data in a
@@ -186,4 +190,6 @@ else
 	echo "xvfb-run not found: the AppImage was not started to check it" >&2
 fi
 
-echo "Made $BUILD/$OUTPUT"
+mkdir -p "$OUT"
+mv "$BUILD/$OUTPUT" "$OUT/$OUTPUT"
+echo "Made $OUT/$OUTPUT"

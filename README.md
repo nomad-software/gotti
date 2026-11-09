@@ -60,7 +60,7 @@ make build                   # or: go build
 ./termite -- htop            # run a command
 ./termite --layout work      # open a saved layout
 ./termite --write-config     # write the default config.json
-make appimage                # build/Termite-<version>-x86_64.AppImage
+make appimage                # Termite-<version>-x86_64.AppImage
 ```
 
 On every start, Termite writes a desktop entry
@@ -207,9 +207,10 @@ Shells started from the AppImage see the system as it is: no library paths
 are added, and the variables the AppImage runtime sets for Termite itself
 (`APPIMAGE`, `APPDIR`, `ARGV0`, `OWD`) are not passed on.
 
-`make appimage` runs the same script locally (it downloads linuxdeploy into
-`build/tools`), but an AppImage built on a newer system only runs on
-systems at least as new.
+`make appimage` runs the same script locally. It works in a temporary
+folder outside the project, removed afterwards, and leaves only the
+AppImage in the project folder. An AppImage built on a newer system only
+runs on systems at least as new.
 
 ## Architecture
 
