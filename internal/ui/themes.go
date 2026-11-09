@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"html"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -13,15 +12,20 @@ import (
 // themeColorFields are the editable non-palette colours of a theme.
 var themeColorFields = []struct {
 	label    string
+	header   bool // shown under Pane header
 	get      func(*config.ThemeSpec) *string
 	resolved func(config.Theme) uint32
 }{
-	{"Foreground", func(s *config.ThemeSpec) *string { return &s.Foreground }, func(t config.Theme) uint32 { return t.Foreground }},
-	{"Background", func(s *config.ThemeSpec) *string { return &s.Background }, func(t config.Theme) uint32 { return t.Background }},
-	{"Cursor", func(s *config.ThemeSpec) *string { return &s.Cursor }, func(t config.Theme) uint32 { return t.Cursor }},
-	{"Cursor text", func(s *config.ThemeSpec) *string { return &s.CursorText }, func(t config.Theme) uint32 { return t.CursorText }},
-	{"Selection", func(s *config.ThemeSpec) *string { return &s.Selection }, func(t config.Theme) uint32 { return t.Selection }},
-	{"Selected text", func(s *config.ThemeSpec) *string { return &s.SelectionText }, func(t config.Theme) uint32 { return t.SelText }},
+	{"Foreground", false, func(s *config.ThemeSpec) *string { return &s.Foreground }, func(t config.Theme) uint32 { return t.Foreground }},
+	{"Background", false, func(s *config.ThemeSpec) *string { return &s.Background }, func(t config.Theme) uint32 { return t.Background }},
+	{"Cursor", false, func(s *config.ThemeSpec) *string { return &s.Cursor }, func(t config.Theme) uint32 { return t.Cursor }},
+	{"Cursor text", false, func(s *config.ThemeSpec) *string { return &s.CursorText }, func(t config.Theme) uint32 { return t.CursorText }},
+	{"Selection", false, func(s *config.ThemeSpec) *string { return &s.Selection }, func(t config.Theme) uint32 { return t.Selection }},
+	{"Selected text", false, func(s *config.ThemeSpec) *string { return &s.SelectionText }, func(t config.Theme) uint32 { return t.SelText }},
+	{"Background", true, func(s *config.ThemeSpec) *string { return &s.HeaderBackground }, func(t config.Theme) uint32 { return t.HeaderBg }},
+	{"Focused background", true, func(s *config.ThemeSpec) *string { return &s.HeaderFocusedBackground }, func(t config.Theme) uint32 { return t.HeaderFocusBg }},
+	{"Text", true, func(s *config.ThemeSpec) *string { return &s.HeaderText }, func(t config.Theme) uint32 { return t.HeaderFg }},
+	{"Focused text", true, func(s *config.ThemeSpec) *string { return &s.HeaderFocusedText }, func(t config.Theme) uint32 { return t.HeaderFocusFg }},
 }
 
 var paletteNames = [8]string{"Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White"}
@@ -37,7 +41,7 @@ func swatchStyle(c uint32) string {
 		config.HexColor(c), text)
 }
 
-// themesTab builds the options dialog's theme page: a list of themes to
+// themesTab builds the options dialog's Colours page: a list of themes to
 // choose from, with an editor for the selected one. read returns the
 // edited themes and the id of the selected theme.
 func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[string]config.ThemeSpec, string)) {
@@ -51,9 +55,10 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 
 	// ---- left: the list and its buttons
 	left := qt.NewQVBoxLayout(nil)
+	_, lf := optionsSection(left, "Themes", "The selected theme is used when you press OK or Apply.")
 	list := qt.NewQListWidget(page)
 	list.SetMinimumWidth(170)
-	left.AddWidget(list.QWidget)
+	lf.AddRowWithWidget(list.QWidget)
 	addBtn := qt.NewQPushButton3("Add")
 	dupBtn := qt.NewQPushButton3("Duplicate")
 	removeBtn := qt.NewQPushButton3("Remove")
@@ -61,14 +66,14 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 	row.AddWidget(addBtn.QWidget)
 	row.AddWidget(dupBtn.QWidget)
 	row.AddWidget(removeBtn.QWidget)
-	left.AddLayout(row.QLayout)
+	lf.AddRowWithLayout(row.QLayout)
 	restoreBtn := qt.NewQPushButton3("Restore Built-in Themes")
-	left.AddWidget(restoreBtn.QWidget)
+	lf.AddRowWithWidget(restoreBtn.QWidget)
 	outer.AddLayout2(left.QLayout, 0)
 
 	// ---- right: the editor
 	right := qt.NewQVBoxLayout(nil)
-	form := qt.NewQFormLayout(nil)
+	_, form := optionsSection(right, "Terminal", "")
 	name := qt.NewQLineEdit(page)
 	form.AddRow3("Name:", name.QWidget)
 	colorBtns := make([]*qt.QPushButton, len(themeColorFields))
@@ -76,9 +81,17 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		b := qt.NewQPushButton(page)
 		b.SetMinimumWidth(110)
 		colorBtns[i] = b
-		form.AddRow3(f.label+":", b.QWidget)
+		if !f.header {
+			form.AddRow3(f.label+":", b.QWidget)
+		}
 	}
-	right.AddLayout(form.QLayout)
+
+	_, hf := optionsSection(right, "Pane header", "")
+	for i, f := range themeColorFields {
+		if f.header {
+			hf.AddRow3(f.label+":", colorBtns[i].QWidget)
+		}
+	}
 
 	palBox := qt.NewQGroupBox3("Palette")
 	grid := qt.NewQGridLayout(palBox.QWidget)
@@ -97,14 +110,6 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		grid.AddWidget2(b.QWidget, i/8, 1+i%8)
 	}
 	right.AddWidget(palBox.QWidget)
-
-	preview := qt.NewQLabel(page)
-	preview.SetTextFormat(qt.RichText)
-	preview.SetMinimumHeight(110)
-	right.AddWidget(preview.QWidget)
-	note := qt.NewQLabel3("The selected theme is used when you press OK or Apply.")
-	note.SetWordWrap(true)
-	right.AddWidget(note.QWidget)
 	right.AddStretch()
 	outer.AddLayout2(right.QLayout, 1)
 
@@ -122,10 +127,7 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		if s == nil {
 			return
 		}
-		th, err := s.Resolve()
-		if err != nil {
-			preview.SetText("<i>" + html.EscapeString(err.Error()) + "</i>")
-		}
+		th, _ := s.Resolve()
 		for i, f := range themeColorFields {
 			c := f.resolved(th)
 			label := config.HexColor(c)
@@ -138,11 +140,6 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		for i, b := range palBtns {
 			b.SetStyleSheet(swatchStyle(th.Palette[i]))
 			b.SetToolTip(b.AccessibleName() + ": " + config.HexColor(th.Palette[i]))
-		}
-		if err == nil {
-			preview.SetStyleSheet(fmt.Sprintf("QLabel { background: %s; color: %s; padding: 8px; font-family: monospace; }",
-				config.HexColor(th.Background), config.HexColor(th.Foreground)))
-			preview.SetText(themePreview(th))
 		}
 	}
 	load := func(rowIdx int) {
@@ -316,30 +313,4 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		return out, sel
 	}
 	return page, read
-}
-
-// themePreview renders a few lines of a shell session in the theme.
-func themePreview(t config.Theme) string {
-	c := func(i int, s string) string {
-		return fmt.Sprintf(`<span style="color:%s">%s</span>`, config.HexColor(t.Palette[i]), html.EscapeString(s))
-	}
-	var b strings.Builder
-	b.WriteString(c(2, "~/gotti") + " $ ls<br>")
-	b.WriteString(c(4, "cmd") + "  " + c(4, "internal") + "  " + c(2, "build.sh") + "  README.md<br>")
-	b.WriteString(c(2, "~/gotti") + " $ git status<br>")
-	b.WriteString(c(1, "modified: main.go") + "  " + c(3, "untracked: notes") + "<br>")
-	selText := t.SelText
-	if selText == 0 {
-		selText = t.Foreground
-	}
-	fmt.Fprintf(&b, `<span style="background:%s; color:%s">selected text</span> `, config.HexColor(t.Selection), config.HexColor(selText))
-	fmt.Fprintf(&b, `<span style="background:%s; color:%s">&nbsp;</span>`, config.HexColor(t.Cursor), config.HexColor(t.CursorText))
-	b.WriteString("<br>")
-	for i := 0; i < 16; i++ {
-		fmt.Fprintf(&b, `<span style="background:%s">&nbsp;&nbsp;&nbsp;</span>`, config.HexColor(t.Palette[i]))
-		if i == 7 {
-			b.WriteString("<br>")
-		}
-	}
-	return b.String()
 }

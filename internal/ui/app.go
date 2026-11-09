@@ -45,6 +45,7 @@ func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
 	a := &App{cfg: cfg, cfgPath: cfgPath, caches: map[float64]*render.GlyphCache{}, fontScale: 1, defaultCmd: cmd}
 	a.bindings = cfg.ParseBindings()
 	a.theme = cfg.ResolveTheme()
+	applyWindowTheme(cfg.WindowTheme)
 	a.stopWatch = config.Watch(cfgPath, time.Second, func(c *config.Config, err error) {
 		mainthread.Start(func() { a.reload(c, err) })
 	})
@@ -68,6 +69,9 @@ func (a *App) reload(c *config.Config, err error) {
 	a.cfg = c
 	a.bindings = c.ParseBindings()
 	a.theme = c.ResolveTheme()
+	if old.WindowTheme != c.WindowTheme {
+		applyWindowTheme(c.WindowTheme)
+	}
 	fontChanged := old.FontFamily != c.FontFamily || old.FontSize != c.FontSize || old.LineHeight != c.LineHeight
 	if fontChanged {
 		a.rebuildFonts()
@@ -80,6 +84,7 @@ func (a *App) reload(c *config.Config, err error) {
 	for _, p := range a.allPanes() {
 		a.applyTerminalSettings(p)
 		p.layoutHeader()
+		p.scrollbar.SetVisible(c.Scrollbar)
 		if p.R != nil {
 			p.R.Style = a.styleFor(p)
 			p.R.Invalidate()
@@ -367,9 +372,7 @@ func (a *App) runAction(p *Pane, action string) {
 				qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
 				return
 			}
-			for _, ln := range lf.Tabs {
-				w.addLayoutTab(ln)
-			}
+			w.loadLayout(lf)
 		}
 	case "context_menu":
 		p.contextMenuAtCursor()

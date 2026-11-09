@@ -49,8 +49,13 @@ type Pane struct {
 	cache  *render.GlyphCache
 	dpr    float64
 
-	view          render.View
-	viewTop       int64 // -1: follow output
+	view    render.View
+	viewTop int64 // -1: follow output
+	// scrollbar over the scrollback; its values are lines above sbBase
+	// (the oldest line kept). sbSetting is set while gotti moves it.
+	scrollbar     *qt.QScrollBar
+	sbBase        int64
+	sbSetting     bool
 	redrawPending atomic.Bool
 	syncTimer     *time.Timer
 
@@ -111,7 +116,16 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.GL.SetSizePolicy2(qt.QSizePolicy__Expanding, qt.QSizePolicy__Expanding)
 	p.GL.SetMinimumSize2(40, 20)
 	lay.AddWidget(p.searchBar.QWidget)
-	lay.AddWidget(p.GL.QWidget)
+	row := qt.NewQHBoxLayout(nil)
+	row.SetContentsMargins(0, 0, 0, 0)
+	row.SetSpacing(0)
+	row.AddWidget(p.GL.QWidget)
+	p.scrollbar = qt.NewQScrollBar4(qt.Vertical, p.Widget)
+	p.scrollbar.SetFocusPolicy(qt.NoFocus)
+	p.scrollbar.SetVisible(cfg.Scrollbar)
+	p.scrollbar.OnValueChanged(p.onScrollbar)
+	row.AddWidget(p.scrollbar.QWidget)
+	lay.AddLayout(row.QLayout)
 	p.GL.SetCursor(qt.NewQCursor2(qt.IBeamCursor))
 
 	p.GL.OnInit = p.initGL
@@ -312,7 +326,9 @@ func (p *Pane) paint() {
 	p.T.Mu.Lock()
 	p.R.Prepare(p.T, &p.view)
 	cx, cy := p.T.CursorPos()
+	oldest, bottom := p.T.Buf().Evicted, p.T.Buf().ScreenTopAbs()
 	p.T.Mu.Unlock()
+	p.updateScrollbar(oldest, bottom)
 	p.view.Dirty, p.view.CursorDirty = false, false
 	p.R.Render()
 	if debugStartup && !firstFrameDone {
@@ -829,6 +845,39 @@ func (p *Pane) scrollBy(n int) {
 	top = max(minTop, min(top, bottom))
 	if top == bottom {
 		top = -1
+	}
+	if top != p.viewTop {
+		p.viewTop = top
+		p.GL.Update()
+	}
+}
+
+// updateScrollbar shows the view's place in the scrollback. It runs as
+// part of painting, so it costs nothing while the pane is idle.
+func (p *Pane) updateScrollbar(oldest, bottom int64) {
+	if !p.scrollbar.IsVisible() {
+		return
+	}
+	top := p.viewTop
+	if top < 0 {
+		top = bottom
+	}
+	p.sbSetting = true
+	p.sbBase = oldest
+	p.scrollbar.SetRange(0, int(bottom-oldest))
+	p.scrollbar.SetPageStep(max(p.rows, 1))
+	p.scrollbar.SetValue(int(top - oldest))
+	p.sbSetting = false
+}
+
+// onScrollbar scrolls the view when the scrollbar is moved by the user.
+func (p *Pane) onScrollbar(v int) {
+	if p.sbSetting {
+		return
+	}
+	top := p.sbBase + int64(v)
+	if v >= p.scrollbar.Maximum() {
+		top = -1 // at the bottom: follow output
 	}
 	if top != p.viewTop {
 		p.viewTop = top

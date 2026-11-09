@@ -113,12 +113,9 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 	}
 	menu.AddSeparator()
 
-	// panes, tabs, windows
+	// panes
 	b.item("Split Horizontally", "split_horizontal", run("split_horizontal"))
 	b.item("Split Vertically", "split_vertical", run("split_vertical"))
-	b.item("New Tab", "new_tab", run("new_tab"))
-	b.item("New Window", "new_window", run("new_window"))
-	b.item("Close Pane", "close_pane", run("close_pane"))
 	menu.AddSeparator()
 
 	// broadcast
@@ -136,10 +133,21 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 
 	// layouts
 	lm := b.sub("Layouts")
-	lm.item("Save Layout…", "save_layout", run("save_layout"))
+	lm.item("Save…", "save_layout", run("save_layout"))
 	if names := ListLayouts(); len(names) > 0 {
-		lm.m.AddSection("Open")
 		w := p.tab.win
+		rm := lm.sub("Remove")
+		for _, n := range names {
+			rm.item(n, "", func() {
+				if qt.QMessageBox_Question(w.w, "Remove Layout", "Remove the layout \""+n+"\"?") != qt.QMessageBox__Yes {
+					return
+				}
+				if err := RemoveLayout(n); err != nil {
+					qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
+				}
+			})
+		}
+		lm.m.AddSection("Open")
 		for _, n := range names {
 			lm.item(n, "", func() {
 				lf, err := LoadLayout(n)
@@ -147,30 +155,29 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 					qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
 					return
 				}
-				for _, ln := range lf.Tabs {
-					w.addLayoutTab(ln)
-				}
+				w.loadLayout(lf)
 			})
 		}
 	}
 	menu.AddSeparator()
 
 	// view
-	b.item("Find…", "search", run("search"))
+	findChosen := false
+	b.item("Find…", "search", func() { findChosen = true; a.runAction(p, "search") })
 	b.item("Clear Scrollback", "clear_scrollback", run("clear_scrollback"))
 	b.item("Reset Terminal", "reset_terminal", run("reset_terminal"))
 	menu.AddSeparator()
 
-	zoom := b.sub("Zoom")
-	zoom.item("Zoom In", "font_bigger", run("font_bigger"))
-	zoom.item("Zoom Out", "font_smaller", run("font_smaller"))
-	zoom.item("Reset Zoom", "font_reset", run("font_reset"))
 	b.item("Options…", "options", run("options"))
 
 	menu.ExecWithPos(qt.NewQPoint2(x, y))
 	menu.DeleteLater()
-	if !p.exited {
-		p.refocus()
+	if p.exited {
+		return
+	}
+	p.refocus()
+	if findChosen {
+		p.searchBar.SetFocus() // refocus gave it back to the terminal
 	}
 }
 

@@ -14,14 +14,19 @@ import (
 // "#rrggbb" (or any X11 spec term.ParseColor accepts). CursorText,
 // Selection and SelectionText may be empty for sensible defaults.
 type ThemeSpec struct {
-	Name          string   `json:"name"`
-	Foreground    string   `json:"foreground"`
-	Background    string   `json:"background"`
-	Cursor        string   `json:"cursor"`
-	CursorText    string   `json:"cursor_text,omitempty"`
-	Selection     string   `json:"selection,omitempty"`
-	SelectionText string   `json:"selection_text,omitempty"`
-	Palette       []string `json:"palette"` // 16 colours: 8 normal, then 8 bright
+	Name          string `json:"name"`
+	Foreground    string `json:"foreground"`
+	Background    string `json:"background"`
+	Cursor        string `json:"cursor"`
+	CursorText    string `json:"cursor_text,omitempty"`
+	Selection     string `json:"selection,omitempty"`
+	SelectionText string `json:"selection_text,omitempty"`
+	// Pane header colours; optional.
+	HeaderBackground        string   `json:"header_background,omitempty"`
+	HeaderFocusedBackground string   `json:"header_focused_background,omitempty"`
+	HeaderText              string   `json:"header_text,omitempty"`
+	HeaderFocusedText       string   `json:"header_focused_text,omitempty"`
+	Palette                 []string `json:"palette"` // 16 colours: 8 normal, then 8 bright
 }
 
 // Theme is a resolved theme, with colours as 0xRRGGBB.
@@ -33,7 +38,9 @@ type Theme struct {
 	CursorText uint32
 	Selection  uint32 // selection background
 	SelText    uint32 // selection foreground (0 keeps text colours)
-	Palette    [16]uint32
+	// Pane header background and text, and the focused pane's.
+	HeaderBg, HeaderFg, HeaderFocusBg, HeaderFocusFg uint32
+	Palette                                          [16]uint32
 }
 
 // Solarized base colours.
@@ -77,7 +84,7 @@ var BuiltinThemes = map[string]ThemeSpec{
 	// Ubuntu's terminal look: Tango palette on the aubergine background
 	// used with the Ambiance desktop theme.
 	"ubuntu-ambiance": {
-		Name: "Ubuntu Ambiance", Foreground: "#ffffff", Background: "#300a24",
+		Name: "Ambience", Foreground: "#ffffff", Background: "#300a24",
 		Cursor: "#ffffff", CursorText: "#300a24", Selection: "#5e2750", SelectionText: "#ffffff",
 		Palette: []string{
 			"#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
@@ -123,6 +130,14 @@ func (s ThemeSpec) Resolve() (Theme, error) {
 	t.Selection = Mix(t.Background, t.Foreground, 0.25)
 	parse("selection", s.Selection, &t.Selection, true)
 	parse("selection_text", s.SelectionText, &t.SelText, true)
+	t.HeaderBg = Mix(t.Background, 0x000000, 0.4)
+	parse("header_background", s.HeaderBackground, &t.HeaderBg, true)
+	t.HeaderFocusBg = t.HeaderBg
+	parse("header_focused_background", s.HeaderFocusedBackground, &t.HeaderFocusBg, true)
+	t.HeaderFg = Mix(t.Background, t.Foreground, 0.55)
+	parse("header_text", s.HeaderText, &t.HeaderFg, true)
+	t.HeaderFocusFg = t.Foreground
+	parse("header_focused_text", s.HeaderFocusedText, &t.HeaderFocusFg, true)
 	if len(s.Palette) != 16 {
 		errs = append(errs, fmt.Sprintf("palette has %d colours, not 16", len(s.Palette)))
 	}

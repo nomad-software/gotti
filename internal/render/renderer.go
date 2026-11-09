@@ -104,7 +104,6 @@ type Renderer struct {
 	curBlink      bool
 	topAbs        int64
 	screenTopAbs  int64
-	scrollbackLen int
 	view          View
 	lastCurY      int
 	lastPreedit   string
@@ -155,7 +154,6 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
 	}
 	buf := t.Buf()
 	r.screenTopAbs = buf.ScreenTopAbs()
-	r.scrollbackLen = buf.ScrollbackLen()
 	top := v.TopAbs
 	if top < 0 || top > r.screenTopAbs {
 		top = r.screenTopAbs
@@ -723,7 +721,7 @@ func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8, fg uint32) (
 	return 0, Sprite{}
 }
 
-// buildOverlay fills the overlay slots: border, scrollbar and IME preedit.
+// buildOverlay fills the overlay slots: border and IME preedit.
 func (r *Renderer) buildOverlay() {
 	fs := r.Cache.Fonts
 	cw, ch := fs.CellW, fs.CellH
@@ -743,12 +741,6 @@ func (r *Renderer) buildOverlay() {
 		add(0, r.fbH-t, r.fbW, t, b)
 		add(0, 0, t, r.fbH, b)
 		add(r.fbW-t, 0, t, r.fbH, b)
-	}
-	if r.topAbs < r.screenTopAbs && r.scrollbackLen > 0 {
-		total := float64(r.scrollbackLen + r.rows)
-		h := max(float64(ch), float64(r.fbH)*float64(r.rows)/total)
-		pos := float64(r.topAbs-(r.screenTopAbs-int64(r.scrollbackLen))) / total * float64(r.fbH)
-		add(r.fbW-max(3, cw/3), int(pos), max(3, cw/3), int(h), rgba(mix(r.defBg, r.defFg, 0.5), 200))
 	}
 	gbase := r.rows * r.glyphSlot
 	gov := r.glyphs[gbase:]

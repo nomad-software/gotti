@@ -283,6 +283,9 @@ func LoadLayout(name string) (*LayoutFile, error) {
 	return &f, nil
 }
 
+// RemoveLayout deletes a named layout.
+func RemoveLayout(name string) error { return os.Remove(layoutPath(name)) }
+
 // buildLayout creates panes for ln inside tab t, splitting from p.
 func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 	if len(ln.Children) == 0 {

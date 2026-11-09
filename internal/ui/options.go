@@ -34,6 +34,21 @@ func (c choice) value() string {
 	return ""
 }
 
+// optionsSection adds a titled group box to layout, with an optional note
+// above its form. Fields stretch to the box's width.
+func optionsSection(layout *qt.QVBoxLayout, title, note string) (*qt.QGroupBox, *qt.QFormLayout) {
+	box := qt.NewQGroupBox3(title)
+	form := qt.NewQFormLayout(box.QWidget)
+	form.SetFieldGrowthPolicy(qt.QFormLayout__AllNonFixedFieldsGrow)
+	if note != "" {
+		label := qt.NewQLabel3(note)
+		label.SetWordWrap(true)
+		form.AddRowWithWidget(label.QWidget)
+	}
+	layout.AddWidget(box.QWidget)
+	return box, form
+}
+
 // showOptions opens the options dialog. Settings are written to the
 // config file on OK or Apply and applied at once.
 func (a *App) showOptions(p *Pane) {
@@ -44,10 +59,17 @@ func (a *App) showOptions(p *Pane) {
 	tabs := qt.NewQTabWidget(dlg.QWidget)
 	general := qt.NewQWidget(nil)
 	gl := qt.NewQVBoxLayout(general)
+	uiPage := qt.NewQWidget(nil)
+	ul := qt.NewQVBoxLayout(uiPage)
+
+	// ---- window theme
+	win, wf := optionsSection(ul, "Window", "")
+	windowTheme := newChoice(win.QWidget, []string{"Light", "Dark", "Follow the system"},
+		[]string{"light", "dark", "system"}, cfg.WindowTheme)
+	wf.AddRow3("Theme:", windowTheme.box.QWidget)
 
 	// ---- appearance
-	look := qt.NewQGroupBox3("Appearance")
-	lf := qt.NewQFormLayout(look.QWidget)
+	look, lf := optionsSection(ul, "Appearance", "")
 
 	// Every scalable font is offered: Qt's monospace filter relies on the
 	// font's declared spacing, which hides fonts like Iosevka Term.
@@ -94,21 +116,20 @@ func (a *App) showOptions(p *Pane) {
 	boldBright := qt.NewQCheckBox3("Show bold text in bright colours")
 	boldBright.SetChecked(cfg.BoldIsBright)
 	lf.AddRow3("", boldBright.QWidget)
-	gl.AddWidget(look.QWidget)
+	scrollbar := qt.NewQCheckBox3("Show a scrollbar")
+	scrollbar.SetChecked(cfg.Scrollbar)
+	lf.AddRow3("", scrollbar.QWidget)
 
 	// ---- cursor
-	curBox := qt.NewQGroupBox3("Cursor")
-	cf := qt.NewQFormLayout(curBox.QWidget)
+	curBox, cf := optionsSection(ul, "Cursor", "")
 	cursor := newChoice(curBox.QWidget, []string{"Block", "Beam", "Underline"}, []string{"block", "beam", "underline"}, cfg.CursorStyle)
 	cf.AddRow3("Style:", cursor.box.QWidget)
 	blink := qt.NewQCheckBox3("Allow blinking when a program asks for it")
 	blink.SetChecked(cfg.CursorBlink)
 	cf.AddRow3("", blink.QWidget)
-	gl.AddWidget(curBox.QWidget)
 
 	// ---- behaviour
-	beh := qt.NewQGroupBox3("Behaviour")
-	bf := qt.NewQFormLayout(beh.QWidget)
+	beh, bf := optionsSection(gl, "Behaviour", "")
 	scrollback := qt.NewQSpinBox(beh.QWidget)
 	scrollback.SetRange(0, 1000000)
 	scrollback.SetSingleStep(1000)
@@ -125,12 +146,13 @@ func (a *App) showOptions(p *Pane) {
 	osc52 := newChoice(beh.QWidget, []string{"Off", "Programs may set it", "Programs may set and read it"},
 		[]string{"off", "write", "read-write"}, cfg.OSC52)
 	bf.AddRow3("Clipboard access (OSC 52):", osc52.box.QWidget)
-	gl.AddWidget(beh.QWidget)
 
 	gl.AddStretch()
+	ul.AddStretch()
 	tabs.AddTab(general, "General")
+	tabs.AddTab(uiPage, "User interface")
 	themesPage, readThemes := a.themesTab(dlg)
-	tabs.AddTab(themesPage, "Themes")
+	tabs.AddTab(themesPage, "Colours")
 	keysPage, readKeys := a.shortcutsTab()
 	tabs.AddTab(keysPage, "Keyboard Shortcuts")
 	root.AddWidget(tabs.QWidget)
@@ -143,19 +165,21 @@ func (a *App) showOptions(p *Pane) {
 	apply := func() bool {
 		bindings, clashes := readKeys()
 		if len(clashes) > 0 {
-			tabs.SetCurrentIndex(2)
+			tabs.SetCurrentIndex(3)
 			qt.QMessageBox_Warning(dlg.QWidget, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
 				strings.Join(clashes, "\n")+"\n\nChange or clear them, then try again.")
 			return false
 		}
 		family := font.CurrentFont().Family()
 		values := map[string]any{
+			"window_theme":   windowTheme.value(),
 			"font_family":    family,
 			"font_size":      math.Round(size.Value()*10) / 10,
 			"line_height":    math.Round(lineHeight.Value()*100) / 100,
 			"padding":        padding.Value(),
 			"ligatures":      ligatures.IsChecked(),
 			"bold_is_bright": boldBright.IsChecked(),
+			"scrollbar":      scrollbar.IsChecked(),
 			"cursor_style":   cursor.value(),
 			"cursor_blink":   blink.IsChecked(),
 			"scrollback":     scrollback.Value(),

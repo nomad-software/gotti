@@ -147,9 +147,7 @@ func chordToQt(s string) string {
 func (a *App) shortcutsTab() (page *qt.QWidget, read func() (map[string]string, []string)) {
 	page = qt.NewQWidget(nil)
 	outer := qt.NewQVBoxLayout(page)
-	note := qt.NewQLabel3("Click a shortcut and press the new keys. Clear it to leave the action unbound.")
-	note.SetWordWrap(true)
-	outer.AddWidget(note.QWidget)
+	box, sf := optionsSection(outer, "Shortcuts", "Click a shortcut and press the new keys. Clear it to leave the action unbound.")
 
 	scroll := qt.NewQScrollArea(page)
 	scroll.SetWidgetResizable(true)
@@ -171,7 +169,7 @@ func (a *App) shortcutsTab() (page *qt.QWidget, read func() (map[string]string, 
 		form.AddRow3(sa.label+":", e.QWidget)
 	}
 	scroll.SetWidget(inner)
-	outer.AddWidget(scroll.QWidget)
+	sf.AddRowWithWidget(scroll.QWidget)
 
 	defaults := qt.NewQPushButton3("Restore Defaults")
 	defaults.OnClicked(func() {
@@ -182,7 +180,9 @@ func (a *App) shortcutsTab() (page *qt.QWidget, read func() (map[string]string, 
 	row := qt.NewQHBoxLayout(nil)
 	row.AddStretch()
 	row.AddWidget(defaults.QWidget)
-	outer.AddLayout(row.QLayout)
+	sf.AddRowWithLayout(row.QLayout)
+	// The list takes what room the page has.
+	outer.SetStretchFactor(box.QWidget, 1)
 
 	read = func() (map[string]string, []string) {
 		out := map[string]string{}

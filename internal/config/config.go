@@ -20,6 +20,7 @@ type Config struct {
 	FontSize     float64           `json:"font_size"`
 	LineHeight   float64           `json:"line_height"`
 	Theme        string            `json:"theme"`
+	WindowTheme  string            `json:"window_theme"` // system, light, dark
 	Scrollback   int               `json:"scrollback"`
 	CursorStyle  string            `json:"cursor_style"` // block, beam, underline
 	CursorBlink  bool              `json:"cursor_blink"`
@@ -31,6 +32,7 @@ type Config struct {
 	OSC52        string            `json:"osc52"` // off, write, read-write
 	WordChars    string            `json:"word_chars"`
 	BoldIsBright bool              `json:"bold_is_bright"`
+	Scrollbar    bool              `json:"scrollbar"`
 	Keybindings  map[string]string `json:"keybindings"`
 	// Themes are the available colour themes by id; Theme picks one. When
 	// the file has a "themes" list it replaces the built-in one entirely.
@@ -92,10 +94,12 @@ func Default() *Config {
 		FontSize:     11,
 		LineHeight:   1.0,
 		Theme:        DefaultTheme,
+		WindowTheme:  "system",
 		Themes:       builtinThemes(),
 		Scrollback:   10000,
 		CursorStyle:  "block",
 		CopyOnSelect: true,
+		Scrollbar:    true,
 		PasteWarning: "unbracketed",
 		Padding:      2,
 		OSC52:        "write",
@@ -182,6 +186,9 @@ func (c *Config) normalize() {
 	if c.Padding < 0 {
 		c.Padding = 0
 	}
+	if c.WindowTheme == "" {
+		c.WindowTheme = "system"
+	}
 }
 
 // Validate reports configuration problems.
@@ -201,6 +208,11 @@ func (c *Config) Validate() error {
 	case "block", "beam", "underline":
 	default:
 		errs = append(errs, fmt.Sprintf("cursor_style must be block, beam or underline, not %q", c.CursorStyle))
+	}
+	switch c.WindowTheme {
+	case "system", "light", "dark":
+	default:
+		errs = append(errs, fmt.Sprintf("window_theme must be system, light or dark, not %q", c.WindowTheme))
 	}
 	switch c.PasteWarning {
 	case "always", "unbracketed", "never":

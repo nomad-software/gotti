@@ -3,7 +3,7 @@
 A GPU-rendered terminal emulator for Linux, written in Go with Qt 6 (via
 [miqt](https://github.com/mappu/miqt)) and OpenGL 3.3 core. It targets
 `TERM=xterm-256color` and implements the xterm subset that shells, vim,
-tmux, htop, less and fzf actually use, plus Terminator-style tabs, splits
+tmux, htop, less and fzf actually use, plus tabs, splits
 and saved layouts.
 
 ![Gotti with two tabs: the first split into vim editing Go source with syntax colours beside two stacked shells, one showing bold, italic, underlined, curly-underlined, struck-through and inverse text, the 16-colour palette, a truecolor gradient, box drawing around wide CJK characters and an emoji, braille and shade blocks and an underlined hyperlink, the other a coloured directory listing; each pane has a header with its directory](docs/screenshot.png)
@@ -55,7 +55,7 @@ bold-as-bright, cursor style and blinking, scrollback, copy on select,
 paste warning and OSC 52 clipboard access. Its Themes tab lists the colour
 themes: pick the one to use, edit its name, colours and 16-colour palette
 with a live preview, add, duplicate or remove themes, and restore the
-built-in ones (Solarized Dark, Solarized Light, Ubuntu Ambiance). Its
+built-in ones (Solarized Dark, Solarized Light, Ambience). Its
 Keyboard Shortcuts tab rebinds every action:
 click a field, press the keys, or clear it to unbind. Shortcuts used by
 more than one action are reported and not saved. OK or Apply saves to
@@ -102,8 +102,8 @@ for new windows.
 
 Right-click opens the context menu (Shift+right-click while an
 application uses the mouse). It covers copy and paste, opening or copying
-the link under the pointer, splitting, tabs, windows,
-broadcast, layouts, find, clear scrollback, reset, zoom, and Options….
+the link under the pointer, splitting,
+broadcast, layouts, find, clear scrollback, reset and Options….
 The menu and dialogs use the desktop's native Qt style; the colour theme
 applies only to the terminal, tabs and splitters.
 
@@ -123,7 +123,9 @@ mouse reporting. In search, Enter goes to older matches, Shift+Enter to
 newer ones, and Esc closes the search bar.
 
 Layouts are saved as JSON under `~/.config/gotti/layouts/`, recording the
-split tree, sizes, each pane's working directory and command.
+split tree, sizes, each pane's working directory and command for every tab.
+Loading a layout replaces the window's tabs with its own. Layouts can be
+removed from the Layouts menu.
 
 ## Architecture
 

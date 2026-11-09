@@ -79,16 +79,14 @@ func (w *Window) applyTheme() {
 	// The rules name gotti's own widgets only, so menus and dialogs keep
 	// the desktop's native look.
 	w.w.SetStyleSheet(fmt.Sprintf(`
-		QWidget#gottiTab, QWidget#gottiPane { background: %[1]s; }
-		QSplitter#gottiSplit::handle { background: %[3]s; }
+		QWidget#gottiPane { background: %[1]s; }
 		QLineEdit#gottiSearch { background: %[1]s; color: %[2]s; border: 1px solid %[3]s; padding: 3px; }
 		QLineEdit#gottiSearch[notFound="true"] { color: #dc322f; }
 		QLabel#gottiHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; font-family: %[6]q; font-size: %.1[7]fpt; }
-		QLabel#gottiHeader[focused="true"] { color: %[2]s; }
+		QLabel#gottiHeader[focused="true"] { background: %[9]s; color: %[8]s; }
 		QLabel#gottiHeader[problem="true"] { color: #dc322f; }
-	`, bg, fg, sel, fmt.Sprintf("#%06x", config.Mix(th.Background, 0x000000, 0.4)), // 40% black over the background
-		fmt.Sprintf("#%06x", config.Mix(th.Background, th.Foreground, 0.55)),
-		w.app.cfg.FontFamily, w.app.cfg.FontSize*headerFontScale))
+	`, bg, fg, sel, fmt.Sprintf("#%06x", th.HeaderBg), fmt.Sprintf("#%06x", th.HeaderFg),
+		w.app.cfg.FontFamily, w.app.cfg.FontSize*headerFontScale, fmt.Sprintf("#%06x", th.HeaderFocusFg), fmt.Sprintf("#%06x", th.HeaderFocusBg)))
 }
 
 func (w *Window) allPanes() []*Pane {
@@ -138,6 +136,32 @@ func (w *Window) addLayoutTab(ln LayoutNode) {
 		return
 	}
 	w.app.buildLayout(t, t.root.pane, ln)
+}
+
+// loadLayout replaces the window's tabs with the layout's, opening on its
+// first tab.
+func (w *Window) loadLayout(lf *LayoutFile) {
+	if len(lf.Tabs) == 0 {
+		return
+	}
+	old := append([]*Tab(nil), w.list...)
+	first := -1
+	for _, ln := range lf.Tabs {
+		n := len(w.list)
+		w.addLayoutTab(ln)
+		if first < 0 && len(w.list) > n {
+			first = w.indexOf(w.list[n])
+		}
+	}
+	if first < 0 {
+		return // nothing opened: keep the current tabs
+	}
+	for _, t := range old {
+		for _, p := range t.Panes() {
+			p.close()
+		}
+	}
+	w.tabs.SetCurrentIndex(first)
 }
 
 func (w *Window) removeTab(t *Tab) {
