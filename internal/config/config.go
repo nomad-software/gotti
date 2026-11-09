@@ -243,9 +243,23 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Watch polls the file and calls fn with the new configuration whenever
-// it changes. fn runs on the watcher goroutine. Stop with the returned func.
+// Watch calls fn with the new configuration whenever the file changes, on
+// the watcher's goroutine, until the returned func is called. It uses
+// inotify, so an idle watcher costs nothing; if that is unavailable (the
+// config folder does not exist yet, say) it polls every interval instead.
 func Watch(path string, interval time.Duration, fn func(*Config, error)) func() {
+	reload := func() {
+		c, err := Load(path)
+		fn(c, err)
+	}
+	if stop, err := watchNotify(path, reload); err == nil {
+		return stop
+	}
+	return watchPoll(path, interval, reload)
+}
+
+// watchPoll checks the file's modification time every interval.
+func watchPoll(path string, interval time.Duration, changed func()) func() {
 	stop := make(chan struct{})
 	modTime := func() time.Time {
 		st, err := os.Stat(path)
@@ -265,8 +279,7 @@ func Watch(path string, interval time.Duration, fn func(*Config, error)) func() 
 			case <-t.C:
 				if m := modTime(); !m.Equal(last) {
 					last = m
-					c, err := Load(path)
-					fn(c, err)
+					changed()
 				}
 			}
 		}

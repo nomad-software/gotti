@@ -1,9 +1,11 @@
 package term
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Pos is an absolute position: Line is Buffer.Evicted + logical index, so
@@ -30,22 +32,20 @@ func (b *Buffer) AbsToLogical(abs int64) int {
 // ScreenTopAbs returns the absolute line number of screen row 0.
 func (b *Buffer) ScreenTopAbs() int64 { return b.Evicted + int64(b.count-b.Rows) }
 
-func appendLine(sb *strings.Builder, line []Cell, from, to int) {
+func appendLine(buf []byte, line []Cell, from, to int) []byte {
 	for x := from; x < to && x < len(line); x++ {
 		c := &line[x]
-		if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
-			continue
-		}
-		if c.Ch == 0 {
-			sb.WriteByte(' ')
-			continue
-		}
-		if c.Attr&AttrCluster != 0 {
-			sb.WriteString(ClusterString(uint32(c.Ch)))
-		} else {
-			sb.WriteRune(c.Ch)
+		switch {
+		case c.Attr&(AttrWideCont|AttrWrapPad) != 0:
+		case c.Ch == 0:
+			buf = append(buf, ' ')
+		case c.Attr&AttrCluster != 0:
+			buf = append(buf, ClusterString(uint32(c.Ch))...)
+		default:
+			buf = utf8.AppendRune(buf, c.Ch)
 		}
 	}
+	return buf
 }
 
 // TextRange extracts text between two absolute positions (inclusive of
@@ -55,7 +55,7 @@ func (b *Buffer) TextRange(start, end Pos, block bool) string {
 	if end.Less(start) {
 		start, end = end, start
 	}
-	var sb strings.Builder
+	var buf []byte
 	for abs := start.Line; abs <= end.Line; abs++ {
 		i := b.AbsToLogical(abs)
 		if i < 0 {
@@ -73,19 +73,17 @@ func (b *Buffer) TextRange(start, end Pos, block bool) string {
 				to = end.Col
 			}
 		}
-		var lb strings.Builder
-		appendLine(&lb, line, from, to)
-		s := lb.String()
+		mark := len(buf)
+		buf = appendLine(buf, line, from, to)
 		wrapped := b.Wrapped(i) && !block
 		if !wrapped || abs == end.Line {
-			s = strings.TrimRight(s, " ")
+			buf = buf[:mark+len(bytes.TrimRight(buf[mark:], " "))]
 		}
-		sb.WriteString(s)
 		if abs != end.Line && !wrapped {
-			sb.WriteByte('\n')
+			buf = append(buf, '\n')
 		}
 	}
-	return sb.String()
+	return string(buf)
 }
 
 func isWordRune(r rune, extra string) bool {
@@ -105,7 +103,8 @@ func (b *Buffer) WordAt(p Pos, extra string) (Pos, Pos) {
 			c = &line[x-1]
 		}
 		if c.Attr&AttrCluster != 0 {
-			return []rune(ClusterString(uint32(c.Ch)))[0]
+			r, _ := utf8.DecodeRuneInString(ClusterString(uint32(c.Ch)))
+			return r
 		}
 		return c.Ch
 	}
@@ -172,27 +171,21 @@ func (b *Buffer) LineExtent(p Pos) (Pos, Pos) {
 type Match struct{ Start, End Pos }
 
 // paragraph joins soft-wrapped lines starting at logical index i and
-// returns the text plus a mapping from byte offset to position.
-func (b *Buffer) paragraph(i int) (string, []Pos, int) {
-	var sb strings.Builder
-	var pos []Pos
+// returns the text, a mapping from byte offset to position and the index
+// of the next paragraph. The text and positions are appended to text[:0]
+// and pos[:0], so callers can reuse them.
+func (b *Buffer) paragraph(i int, text []byte, pos []Pos) ([]byte, []Pos, int) {
+	text, pos = text[:0], pos[:0]
 	j := i
 	for ; j < b.count; j++ {
 		line := b.LogicalLine(j)
 		abs := b.Evicted + int64(j)
-		for x := 0; x < b.Cols; x++ {
-			c := &line[x]
-			if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
-				continue
-			}
-			s := " "
-			if c.Ch != 0 {
-				s = c.Text()
-			}
-			for k := 0; k < len(s); k++ {
+		for x := range line {
+			n := len(text)
+			text = appendLine(text, line[x:x+1], 0, 1)
+			for range len(text) - n {
 				pos = append(pos, Pos{abs, x})
 			}
-			sb.WriteString(s)
 		}
 		if !b.Wrapped(j) {
 			j++
@@ -200,7 +193,7 @@ func (b *Buffer) paragraph(i int) (string, []Pos, int) {
 		}
 	}
 	pos = append(pos, Pos{b.Evicted + int64(j-1), b.Cols})
-	return sb.String(), pos, j
+	return text, pos, j
 }
 
 // Search finds all case-insensitive (unless caseSensitive) occurrences of
@@ -212,19 +205,23 @@ func (b *Buffer) Search(query string, caseSensitive bool) []Match {
 	if !caseSensitive {
 		query = strings.ToLower(query)
 	}
+	q := []byte(query)
 	var out []Match
+	var text, lower []byte
+	var pos []Pos
 	for i := 0; i < b.count; {
-		text, pos, next := b.paragraph(i)
+		var next int
+		text, pos, next = b.paragraph(i, text, pos)
 		hay := text
 		if !caseSensitive {
-			hay = strings.ToLower(text)
-			if len(hay) != len(text) { // case mapping changed length; fall back
-				hay = text
+			lower = appendLower(lower[:0], text)
+			if len(lower) == len(text) { // else case mapping changed length
+				hay = lower
 			}
 		}
 		off := 0
 		for {
-			k := strings.Index(hay[off:], query)
+			k := bytes.Index(hay[off:], q)
 			if k < 0 {
 				break
 			}
@@ -240,6 +237,20 @@ func (b *Buffer) Search(query string, caseSensitive bool) []Match {
 	return out
 }
 
+// appendLower appends s lower-cased to dst, with an ASCII fast path.
+func appendLower(dst, s []byte) []byte {
+	for i, c := range s {
+		if c >= utf8.RuneSelf {
+			return append(dst, bytes.ToLower(s[i:])...)
+		}
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		dst = append(dst, c)
+	}
+	return dst
+}
+
 var urlRe = regexp.MustCompile(`(?:https?|ftp|file)://[^\s<>"'\x60]+|mailto:[^\s<>"']+|www\.[^\s<>"']+`)
 
 // URLAt returns a plain-text URL under p, with its extent.
@@ -249,7 +260,8 @@ func (b *Buffer) URLAt(p Pos) (string, Match, bool) {
 	if i < 0 {
 		return "", Match{}, false
 	}
-	text, pos, _ := b.paragraph(i)
+	t, pos, _ := b.paragraph(i, nil, nil)
+	text := string(t)
 	for _, m := range urlRe.FindAllStringIndex(text, -1) {
 		s, e := m[0], m[1]
 		// trim trailing punctuation that is rarely part of a URL

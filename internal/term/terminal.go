@@ -2,9 +2,14 @@ package term
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
+
+// Version is termite's version, reported by XTVERSION and in
+// $TERM_PROGRAM_VERSION.
+const Version = "1.0"
 
 // Event flags raised by the terminal for the UI layer.
 type Event uint32
@@ -312,10 +317,12 @@ func (t *Terminal) printASCII(s []byte) {
 		src := s[:n]
 		dst := line[x : x+n]
 		dst = dst[:len(src)]
-		tpl := Cell{Fg: pen.Fg, Bg: pen.Bg, Attr: pen.Attr, Extra: pen.Extra}
+		// Store the whole pen (whose Ch is always 0), then patch the rune:
+		// building the cell first would round-trip it through the stack
+		// and stall store forwarding on every cell.
 		for i, c := range src {
-			tpl.Ch = rune(c)
-			dst[i] = tpl
+			dst[i] = pen
+			dst[i].Ch = rune(c)
 		}
 		b.dirty[t.cur.Y] = true
 		t.lastChar = rune(s[n-1])
@@ -394,14 +401,13 @@ func (t *Terminal) printRune(r rune) {
 	if w == 2 && x+1 < t.cols {
 		t.clearWideAt(line, x+1)
 	}
-	pen := t.cur.pen
-	c := Cell{Ch: r, Fg: pen.Fg, Bg: pen.Bg, Attr: pen.Attr, Extra: pen.Extra}
+	// The pen's Ch is always 0; store it whole and patch (see printASCII).
+	line[x] = t.cur.pen
+	line[x].Ch = r
 	if w == 2 {
-		c.Attr |= AttrWide
-		line[x] = c
-		line[x+1] = Cell{Fg: pen.Fg, Bg: pen.Bg, Attr: pen.Attr | AttrWideCont, Extra: pen.Extra}
-	} else {
-		line[x] = c
+		line[x].Attr |= AttrWide
+		line[x+1] = t.cur.pen
+		line[x+1].Attr |= AttrWideCont
 	}
 	t.buf.dirty[t.cur.Y] = true
 	lp.x, lp.y, lp.ok = x, t.cur.Y, true
@@ -752,14 +758,7 @@ func (t *Terminal) escDispatch(final byte) {
 	if p.ninter > 0 {
 		switch p.inter[0] {
 		case '(', ')', '*', '+':
-			slot := int(p.inter[0] - '(')
-			if p.inter[0] == ')' {
-				slot = 1
-			} else if p.inter[0] == '*' {
-				slot = 2
-			} else if p.inter[0] == '+' {
-				slot = 3
-			}
+			slot := strings.IndexByte("()*+", p.inter[0]) // G0–G3
 			if final == '0' {
 				t.cur.charsets[slot] = csDECGraphics
 			} else {
@@ -858,7 +857,7 @@ func (t *Terminal) csiDispatch(final byte) {
 				t.reply("\x1b[>1;10;0c")
 			}
 		case 'q': // XTVERSION
-			t.reply("\x1bP>|termite 1.0\x1b\\")
+			t.reply("\x1bP>|termite " + Version + "\x1b\\")
 		case 'u': // kitty: push flags
 			st := t.kittyStack()
 			*st = append(*st, ps.Raw(0, 0)&0x1f)
@@ -1199,10 +1198,15 @@ func (t *Terminal) setDECMode(mode int, set bool) {
 			t.restorePenExtra()
 		}
 	case 1000, 1002, 1003:
-		if set {
-			t.MouseMode = map[int]int{1000: MouseClick, 1002: MouseButton, 1003: MouseAny}[mode]
-		} else {
+		switch {
+		case !set:
 			t.MouseMode = MouseOff
+		case mode == 1000:
+			t.MouseMode = MouseClick
+		case mode == 1002:
+			t.MouseMode = MouseButton
+		default:
+			t.MouseMode = MouseAny
 		}
 		t.events |= EvMouseMode
 	case 1004:

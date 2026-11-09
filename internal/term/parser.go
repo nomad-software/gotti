@@ -165,9 +165,71 @@ func (t *Terminal) Write(data []byte) {
 			i = t.continueUTF8(data, i)
 			continue
 		}
-		t.step(data[i])
-		i++
+		switch p.state {
+		case sCSIEntry, sCSIParam:
+			i = p.scanCSIParams(data, i)
+		case sOSC:
+			i = p.scanOSC(data, i)
+		case sDCSPass:
+			i = p.scanDCS(data, i)
+		}
+		if i < len(data) {
+			t.step(data[i])
+			i++
+		}
 	}
+}
+
+// scanCSIParams consumes the digits and separators of CSI parameters in a
+// tight loop, returning the index of the first byte it did not consume,
+// which step then handles. It is the bulk of most escape sequences.
+func (p *parser) scanCSIParams(data []byte, i int) int {
+	for ; i < len(data); i++ {
+		switch b := data[i]; {
+		case b >= '0' && b <= '9':
+			if p.cur < 0 {
+				p.cur = 0
+			}
+			if p.cur < paramMaxVal {
+				p.cur = min(p.cur*10+int32(b-'0'), paramMaxVal)
+			}
+		case b == ';' || b == ':':
+			p.pushParam()
+			p.nextSub = b == ':'
+		default:
+			return i
+		}
+		p.state = sCSIParam
+	}
+	return i
+}
+
+// scanOSC appends a run of printable OSC payload bytes at once. Terminators
+// and other controls are left to step.
+func (p *parser) scanOSC(data []byte, i int) int {
+	j := i
+	for j < len(data) && data[j] >= 0x20 {
+		j++
+	}
+	if room := maxOSC - len(p.osc); room > 0 {
+		p.osc = append(p.osc, data[i:min(j, i+room)]...)
+	}
+	return j
+}
+
+// scanDCS appends DCS passthrough data up to the next ESC, CAN or SUB.
+func (p *parser) scanDCS(data []byte, i int) int {
+	j := i
+	for j < len(data) {
+		if b := data[j]; b == 0x1b || b == 0x18 || b == 0x1a {
+			break
+		}
+		j++
+	}
+	if room := maxDCS - len(p.dcs); room > 0 {
+		p.dcs = append(p.dcs, data[i:min(j, i+room)]...)
+	}
+	return j
 }
 
 func utf8SeqLen(b byte) int {
@@ -211,9 +273,8 @@ func (t *Terminal) step(b byte) {
 	// Controls that act in any state.
 	switch b {
 	case 0x18, 0x1a: // CAN, SUB abort sequences
-		if p.state == sOSC || p.state == sDCSPass || p.state == sSOS || p.state == sStringEsc {
-			p.osc = p.osc[:0]
-		}
+		p.osc = p.osc[:0]
+		p.dcs = p.dcs[:0]
 		p.state = sGround
 		return
 	case 0x1b:
@@ -277,10 +338,7 @@ func (t *Terminal) step(b byte) {
 				p.cur = 0
 			}
 			if p.cur < paramMaxVal {
-				p.cur = p.cur*10 + int32(b-'0')
-				if p.cur > paramMaxVal {
-					p.cur = paramMaxVal
-				}
+				p.cur = min(p.cur*10+int32(b-'0'), paramMaxVal)
 			}
 			p.state = sCSIParam
 		case b == ';' || b == ':':
@@ -363,7 +421,7 @@ func (t *Terminal) step(b byte) {
 				p.cur = 0
 			}
 			if p.cur < paramMaxVal {
-				p.cur = p.cur*10 + int32(b-'0')
+				p.cur = min(p.cur*10+int32(b-'0'), paramMaxVal)
 			}
 			p.state = sDCSParam
 		case b == ';' || b == ':':

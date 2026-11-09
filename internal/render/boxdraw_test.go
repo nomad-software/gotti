@@ -69,7 +69,7 @@ func TestDumpBox(t *testing.T) {
 		t.Skip()
 	}
 	w, h := 9, 18
-	chars := []rune("┼╔╬╭╡▒▚⣿")
+	chars := "┼╔╬╭╡▒▚⣿"
 	var lines [18]strings.Builder
 	for _, r := range chars {
 		a, _ := DrawProcedural(r, w, h)

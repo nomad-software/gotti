@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -57,9 +58,17 @@ func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
 func (a *App) reload(c *config.Config, err error) {
 	// Problems are shown in every pane's header until the file is fixed;
 	// whatever did load is still applied (Load falls back to defaults).
-	a.configErr = ""
+	problem := ""
 	if err != nil {
-		a.configErr = err.Error()
+		problem = err.Error()
+	}
+	if c != nil && problem == a.configErr && reflect.DeepEqual(c, a.cfg) {
+		// Nothing changed: typically termite's own write (Options, the
+		// saved window size) coming back from the file watcher.
+		return
+	}
+	a.configErr = problem
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "termite:", err)
 	}
 	if c == nil {
@@ -100,7 +109,13 @@ func (a *App) reload(c *config.Config, err error) {
 // itself: theme colours, the default cursor shape and clipboard access.
 func (a *App) applyTerminalSettings(p *Pane) {
 	th := a.theme
-	cursor := map[string]int{"block": term.CursorBlock, "beam": term.CursorBeam, "underline": term.CursorUnderline}[a.cfg.CursorStyle]
+	cursor := term.CursorBlock
+	switch a.cfg.CursorStyle {
+	case "beam":
+		cursor = term.CursorBeam
+	case "underline":
+		cursor = term.CursorUnderline
+	}
 	p.T.Mu.Lock()
 	p.T.SetColors(th.Palette256(), th.Foreground, th.Background, th.Cursor)
 	p.T.SetDefaultCursor(cursor)

@@ -11,6 +11,40 @@ and saved layouts.
 The screenshot is drawn by `make screenshot` (needs Xvfb, ImageMagick and
 vim).
 
+## Why Termite
+
+- **Fast where it counts.** The parser takes plain text at over 400 MB/s
+  and full-colour output at 165 MB/s, with zero allocations in steady
+  state. A 100 MB `cat` finishes in about a second, on a software
+  renderer. A keypress reaches the screen in single-digit milliseconds.
+- **Costs nothing when idle.** There are no polling timers: redraws happen
+  only after output, the config file is watched with inotify, and the
+  cursor blinks only when a program asks for it. An idle window uses 0 CPU
+  ticks.
+- **Light on memory.** Each cell is 16 bytes with no pointers, and the
+  scrollback is one ring buffer allocated up front. Scrolling moves an
+  index and copies nothing, and pages are only touched once lines are
+  written.
+- **Resizes smoothly.** Reflow rewraps 10,000 lines of scrollback in
+  about 12 ms, writing straight into the new buffer. Dragging a window
+  edge doesn't stutter or pile up garbage.
+- **Correct where others cut corners.** Character widths follow glibc's
+  `wcwidth`, so vim, shells and TUIs stay aligned. Wide characters wrap
+  and reflow without stray spaces. Box drawing, braille and Powerline
+  glyphs are drawn procedurally, so they join without gaps at any size.
+- **The modern protocols programs use.** Truecolor, every underline style
+  and underline colours, OSC 8 hyperlinks, OSC 52 clipboard, OSC 7
+  directories, synchronized output (2026), bracketed paste, SGR mouse,
+  focus events and the kitty keyboard protocol.
+- **A workspace, not just a window.** Tabs and splits with
+  cursor-aligned Alt+Arrow navigation, input broadcast to a tab or a
+  group of panes, saved layouts that reopen each pane in its directory
+  and command, and pane headers that show where each shell is.
+- **Comfortable to configure.** One JSON file that applies the moment
+  it's saved, with problems shown in place while the rest still loads.
+  There is also a native Options dialog with a theme editor and live
+  preview, and a shortcut editor that catches clashes.
+
 ## Build and run
 
 Requirements: Go 1.27+, Qt 6 development files (Widgets, OpenGL,
@@ -43,20 +77,23 @@ prints time-to-first-frame and keypress-to-frame latencies.
 ## Configuration
 
 `~/.config/termite/config.json` (or `$XDG_CONFIG_HOME/termite`). Changes are
-applied live, with no restart needed. `termite --write-config` writes every
+applied live, with no restart needed: the file is watched with inotify,
+including when an editor saves it by renaming a new file over it, or when
+it is a symlink into a dotfiles checkout. `termite --write-config` writes every
 option with its default. Problems (misspelt keys, bad values, syntax
 errors with their line) are shown in red in every pane's header until the
 file is fixed; whatever is valid still applies.
 
 Most options can also be set in the **Options** dialog (right-click →
-Options…). Its General tab covers font and size (any installed font,
-with a warning if it isn't monospaced), line height, padding, ligatures,
-bold-as-bright, cursor style and blinking, scrollback, copy on select,
-paste warning and OSC 52 clipboard access. Its Themes tab lists the colour
-themes: pick the one to use, edit its name, colours and 16-colour palette
-with a live preview, add, duplicate or remove themes, and restore the
-built-in ones (Solarized Dark, Solarized Light, Ambience). Its
-Keyboard Shortcuts tab rebinds every action:
+Options…). Its General tab covers scrollback, copy on select, paste
+warning and OSC 52 clipboard access. Its User interface tab covers the
+window theme, font and size (any installed font, with a warning if it
+isn't monospaced), line height, padding, ligatures, bold-as-bright, the
+scrollbar, and cursor style and blinking. Its Colours tab lists the colour
+themes: pick the one to use, edit its name, terminal and pane header
+colours and 16-colour palette with a live preview, add, duplicate or
+remove themes, and restore the built-in ones (Solarized Dark, Solarized
+Light, Ambience). Its Keyboard Shortcuts tab rebinds every action:
 click a field, press the keys, or clear it to unbind. Shortcuts used by
 more than one action are reported and not saved. OK or Apply saves to
 `config.json` and applies at once. The
@@ -69,6 +106,7 @@ for new windows.
 | `font_size` | `11.0` | points |
 | `line_height` | `1.0` | multiplier |
 | `theme` | `"solarized-dark"` | id of the theme to use, a key of `themes` |
+| `window_theme` | `"system"` | `system`, `light`, `dark`: colours of the menus, dialogs and tab bar |
 | `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection` and `selection_text` are optional |
 | `scrollback` | `10000` | lines |
 | `cursor_style` | `"block"` | `block`, `beam`, `underline`; programs may choose another shape (DECSCUSR) until they reset it |
@@ -80,6 +118,7 @@ for new windows.
 | `padding` | `2` | logical pixels |
 | `osc52` | `"write"` | `off`, `write`, `read-write` |
 | `bold_is_bright` | `false` | |
+| `scrollbar` | `true` | show a scrollbar beside each pane |
 | `word_chars` | `"-_./~:@%+#=?&"` | extra word characters for double-click |
 | `window_width`, `window_height`, `window_maximized` | `900`, `560`, `false` | saved automatically |
 | `keybindings` | see below | `{"copy": "ctrl+shift+x"}`, or `"none"` to unbind |
@@ -139,7 +178,7 @@ internal/render      glyph atlas, procedural box drawing, OpenGL renderer
 internal/qtgl        C++ QOpenGLWidget shim (miqt has no Qt 6 OpenGLWidgets binding)
 internal/ui          windows, tabs, splits, panes, layouts, actions
 internal/config      JSON config, live reload, in-place setting writes, themes, key chords
-internal/desktop     desktop entry and icon install (as in ApeMail)
+internal/desktop     desktop entry and icon install
 internal/appicon     embedded program icon
 ```
 
@@ -152,11 +191,13 @@ without the lock. All Qt and GL calls happen on the main thread.
 Key implementation points:
 - **Cells** are 16 bytes with no pointers: rune, packed fg/bg (`kind<<24 | index-or-RGB`), 16-bit flags, and a 16-bit index into an interned table for rare data (underline colour, OSC 8 link).
 - **Grid and scrollback** form one flat `[]Cell`, allocated up front and used as a ring. Scrolling into scrollback moves an index; nothing is copied. Untouched pages never become resident.
-- **Parser**: a VT500-style state machine with an ASCII fast path that writes runs of printable bytes in bulk. Steady-state allocations are zero.
+- **Parser**: a VT500-style state machine with fast paths for the bulk of real output. Runs of printable ASCII are written in one go, CSI parameters are scanned in a tight loop, and OSC/DCS payloads are copied whole. Cells are stored from the pen in one 16-byte write. Steady-state allocations are zero.
+- **Reflow** measures the result in a first pass, then writes only the lines that are kept straight into the new ring, so a resize allocates nothing but the new buffer.
 - **Rendering**: two instanced draw calls, backgrounds then glyphs. Each row owns a fixed slot in the instance buffers, so only damaged rows are re-uploaded.
 - **Glyphs** are rasterized once with QPainter, which gives Qt's font fallback, colour emoji and shaping for ligatures. They live in a shared RGBA atlas, since all pane contexts share GL resources.
 - **Box drawing**, block elements, braille, Powerline separators and DEC scan lines are drawn procedurally, so they join cleanly between cells.
 - **Decorations** (all underline styles, strike, overline, cursor shapes) are atlas sprites, so they need no extra draw calls.
+- **Search** highlighting costs O(1) per cell however many matches there are: matches are sorted, so each row walks them with a forward-only cursor.
 
 ## Testing
 
@@ -172,16 +213,19 @@ test/termite-headless -size 80x24 -script '1{enter}{wait 500}' -- vttest
 
 ## Measured results
 
-Measured under Xvfb with Mesa llvmpipe (software GL) on 8 cores, so a
-real GPU should do as well or better:
+Measured on an i7-6700K under Xvfb with Mesa llvmpipe (software GL), so a
+real GPU should do as well or better (`make bench` for the parser and
+reflow figures):
 
 | Metric | Target | Measured |
 | --- | --- | --- |
 | Keypress-to-screen latency | < 10 ms | 5–9 ms (includes PTY echo round trip and `glFinish`) |
-| `cat` of a 100 MB file | < 2 s | 1.58 s in the GUI; parser alone 150 MB/s |
+| `cat` of a 100 MB file | < 2 s | 1.06 s in the GUI |
+| Parser throughput | | 418 MB/s plain text, 167 MB/s SGR-heavy, 129 MB/s CJK/emoji, 135 MB/s cursor movement (one core) |
+| Reflow, 200 columns × 10k lines | | 12.7 ms per resize |
 | Idle CPU | ~0% | 0 ticks over 5 s |
 | Memory per pane, 10k scrollback | < 20 MB | 15.4 MB of emulator heap (120 cols); see note |
-| Startup time | < 200 ms | 153 ms to first frame |
+| Startup time | < 200 ms | 150–170 ms to first frame |
 
 Memory note: every pane is a `QOpenGLWidget` with its own GL context. Under
 llvmpipe each context adds ~25 MB of driver RSS on top of the emulator's

@@ -22,7 +22,7 @@ func (p *Pane) setupHeader() {
 	// The label must never widen the pane: long paths are elided instead.
 	p.header.SetMinimumWidth(1)
 	p.header.SetSizePolicy2(qt.QSizePolicy__Ignored, qt.QSizePolicy__Fixed)
-	p.header.SetProperty("focused", qt.NewQVariant8(false))
+	setBoolProperty(p.header.QWidget, "focused", false)
 	p.header.OnResizeEvent(func(super func(*qt.QResizeEvent), ev *qt.QResizeEvent) {
 		super(ev)
 		p.layoutHeader()
@@ -79,7 +79,7 @@ func (p *Pane) layoutHeader() {
 	p.header.SetToolTip(tip)
 	if problem != p.headerProblem {
 		p.headerProblem = problem
-		p.header.SetProperty("problem", qt.NewQVariant8(problem))
+		setBoolProperty(p.header.QWidget, "problem", problem)
 		p.repolishHeader()
 	}
 }
@@ -92,7 +92,7 @@ func (p *Pane) repolishHeader() {
 
 // setHeaderFocused highlights the header of the focused pane.
 func (p *Pane) setHeaderFocused(on bool) {
-	p.header.SetProperty("focused", qt.NewQVariant8(on))
+	setBoolProperty(p.header.QWidget, "focused", on)
 	p.repolishHeader()
 }
 

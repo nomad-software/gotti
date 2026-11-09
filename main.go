@@ -54,7 +54,9 @@ func main() {
 		if err != nil {
 			fatal(err)
 		}
-		pprof.StartCPUProfile(f)
+		if err := pprof.StartCPUProfile(f); err != nil {
+			fatal(err)
+		}
 		defer pprof.StopCPUProfile()
 	}
 	if *pprofAddr != "" {

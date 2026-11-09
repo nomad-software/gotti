@@ -43,3 +43,15 @@ func BenchmarkASCII(b *testing.B)   { benchFeed(b, "ascii") }
 func BenchmarkSGR(b *testing.B)     { benchFeed(b, "sgr") }
 func BenchmarkUnicode(b *testing.B) { benchFeed(b, "unicode") }
 func BenchmarkCursor(b *testing.B)  { benchFeed(b, "cursor") }
+
+// BenchmarkReflow resizes a terminal with full scrollback, as dragging a
+// window edge does on every step.
+func BenchmarkReflow(b *testing.B) {
+	t := New(200, 50, 10000)
+	t.Write(benchData("sgr")[:3<<20])
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		t.Resize(199-i%2, 50)
+	}
+}

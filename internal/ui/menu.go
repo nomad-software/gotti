@@ -107,7 +107,7 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 	if at != nil {
 		if url := p.linkAt(*at); url != "" {
 			menu.AddSeparator()
-			b.item("Open Link", "", func() { qt.QDesktopServices_OpenUrl(qt.NewQUrl3(url)) })
+			b.item("Open Link", "", func() { openURL(url) })
 			b.item("Copy Link Address", "", func() { qt.QGuiApplication_Clipboard().SetText(url) })
 		}
 	}
@@ -170,7 +170,9 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 
 	b.item("Options…", "options", run("options"))
 
-	menu.ExecWithPos(qt.NewQPoint2(x, y))
+	pos := qt.NewQPoint2(x, y)
+	menu.ExecWithPos(pos)
+	pos.Delete()
 	menu.DeleteLater()
 	if p.exited {
 		return
@@ -190,8 +192,8 @@ func (p *Pane) contextMenuAtCursor() {
 	st := p.R.Style
 	lx := int(float64(st.PadX+cx*cw) / p.dpr)
 	ly := int(float64(st.PadY+(cy+1)*ch) / p.dpr)
-	g := p.GL.MapToGlobalWithQPoint(qt.NewQPoint2(lx, ly))
-	p.showContextMenu(g.X(), g.Y(), nil)
+	gx, gy := mapToGlobal(p.GL.QWidget, lx, ly)
+	p.showContextMenu(gx, gy, nil)
 }
 
 // editConfig opens the config file in the desktop's editor, creating it

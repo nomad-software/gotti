@@ -8,9 +8,7 @@ import (
 
 // LineString returns the text of logical line i, trailing blanks trimmed.
 func (b *Buffer) LineString(i int) string {
-	var sb strings.Builder
-	appendLine(&sb, b.LogicalLine(i), 0, b.Cols)
-	return strings.TrimRight(sb.String(), " ")
+	return strings.TrimRight(string(appendLine(nil, b.LogicalLine(i), 0, b.Cols)), " ")
 }
 
 func newT(cols, rows int) *Terminal { return New(cols, rows, 100) }

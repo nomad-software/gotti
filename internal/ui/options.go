@@ -165,7 +165,7 @@ func (a *App) showOptions(p *Pane) {
 	apply := func() bool {
 		bindings, clashes := readKeys()
 		if len(clashes) > 0 {
-			tabs.SetCurrentIndex(3)
+			tabs.SetCurrentWidget(keysPage)
 			qt.QMessageBox_Warning(dlg.QWidget, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
 				strings.Join(clashes, "\n")+"\n\nChange or clear them, then try again.")
 			return false

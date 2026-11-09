@@ -295,12 +295,15 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 	if ln.Split == "rows" {
 		orient = qt.Vertical
 	}
+	// panes[i] holds ln.Children[i], nil where its pane failed to start,
+	// so each nested split is still built in the right pane.
 	panes := []*Pane{p}
 	cur := p
 	for _, c := range ln.Children[1:] {
 		leaf := firstLeaf(c) // a nested split starts as its first pane
 		np, err := a.NewPane(t, leaf.Cwd, leaf.Command)
 		if err != nil {
+			panes = append(panes, nil)
 			continue
 		}
 		t.Split(cur, orient, np)
@@ -312,7 +315,7 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 		node.parent.split.SetSizes(ln.Sizes)
 	}
 	for i, c := range ln.Children {
-		if i < len(panes) {
+		if panes[i] != nil {
 			a.buildLayout(t, panes[i], c)
 		}
 	}

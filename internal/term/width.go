@@ -18,10 +18,7 @@ func RuneWidth(r rune) int {
 		if r < 0x20 || (r >= 0x7f && r < 0xa0) {
 			return 0
 		}
-		if r == 0xad { // soft hyphen
-			return 1
-		}
-		return 1
+		return 1 // includes the soft hyphen, as in glibc
 	}
 	if r > 0x10ffff {
 		return 1

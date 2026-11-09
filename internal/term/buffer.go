@@ -107,13 +107,12 @@ func (b *Buffer) AnyDirty() bool {
 }
 
 func fillCells(line []Cell, fill Cell) {
-	if len(line) == 0 {
+	if fill == (Cell{}) {
+		clear(line) // compiles to memclr
 		return
 	}
-	// doubling copy: much faster than a per-cell loop for long lines
-	line[0] = fill
-	for n := 1; n < len(line); n *= 2 {
-		copy(line[n:], line[:n])
+	for i := range line {
+		line[i] = fill
 	}
 }
 

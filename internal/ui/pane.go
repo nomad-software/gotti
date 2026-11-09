@@ -70,6 +70,7 @@ type Pane struct {
 
 	// mouse reporting
 	buttonsDown int
+	pointer     qt.CursorShape // the pointer shape shown over the terminal
 	lastMouse   [2]int
 	wheelAccum  float64
 
@@ -95,7 +96,7 @@ type Pane struct {
 
 // NewPane creates a pane and starts its process.
 func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
-	p := &Pane{app: a, tab: tab, viewTop: -1, dpr: 1, command: command}
+	p := &Pane{app: a, tab: tab, viewTop: -1, dpr: 1, command: command, pointer: qt.IBeamCursor}
 	p.view.Current = -1
 	cfg := a.cfg
 	p.T = term.New(80, 24, cfg.Scrollback)
@@ -126,7 +127,7 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.scrollbar.OnValueChanged(p.onScrollbar)
 	row.AddWidget(p.scrollbar.QWidget)
 	lay.AddLayout(row.QLayout)
-	p.GL.SetCursor(qt.NewQCursor2(qt.IBeamCursor))
+	setCursorShape(p.GL.QWidget, qt.IBeamCursor)
 
 	p.GL.OnInit = p.initGL
 	p.GL.OnPaint = p.paint
@@ -559,7 +560,7 @@ func (p *Pane) mousePress(e *qt.QMouseEvent) {
 	case input.MouseLeft:
 		if mods&qt.ControlModifier != 0 {
 			if url := p.linkAt(at); url != "" {
-				qt.QDesktopServices_OpenUrl(qt.NewQUrl3(url))
+				openURL(url)
 				return
 			}
 		}
@@ -571,7 +572,7 @@ func (p *Pane) mousePress(e *qt.QMouseEvent) {
 		}
 		p.lastClick, p.lastClickAt = now, at
 		p.selecting = true
-		p.selMode = []int{selChar, selChar, selWord, selLine}[p.clickCount]
+		p.selMode = [...]int{selChar, selChar, selWord, selLine}[p.clickCount]
 		p.view.Sel = render.Selection{Block: mods&qt.AltModifier != 0}
 		p.selAnchor, p.selAnchorE = at, term.Pos{Line: abs, Col: col + 1}
 		if p.selMode != selChar {
@@ -785,7 +786,10 @@ func (p *Pane) updatePointer(link bool) {
 	} else if p.mouseReporting(0) {
 		shape = qt.ArrowCursor
 	}
-	p.GL.SetCursor(qt.NewQCursor2(shape))
+	if shape != p.pointer {
+		p.pointer = shape
+		setCursorShape(p.GL.QWidget, shape)
+	}
 }
 
 func (p *Pane) linkAt(at term.Pos) string {
@@ -974,7 +978,7 @@ func (p *Pane) runSearch(jump bool) {
 	if len(matches) == 0 {
 		p.view.Current = -1
 	}
-	p.searchBar.SetProperty("notFound", qt.NewQVariant8(len(matches) == 0 && q != ""))
+	setBoolProperty(p.searchBar.QWidget, "notFound", len(matches) == 0 && q != "")
 	p.searchBar.Style().Unpolish(p.searchBar.QWidget)
 	p.searchBar.Style().Polish(p.searchBar.QWidget)
 	if jump {

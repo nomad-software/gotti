@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -73,20 +75,27 @@ const headerFontScale = 0.85
 
 func (w *Window) applyTheme() {
 	th := w.app.theme
-	bg := fmt.Sprintf("#%06x", th.Background)
-	fg := fmt.Sprintf("#%06x", th.Foreground)
-	sel := fmt.Sprintf("#%06x", th.Selection)
+	hex := func(c uint32) string { return fmt.Sprintf("#%06x", c) }
 	// The rules name termite's own widgets only, so menus and dialogs keep
 	// the desktop's native look.
-	w.w.SetStyleSheet(fmt.Sprintf(`
-		QWidget#termitePane { background: %[1]s; }
-		QLineEdit#termiteSearch { background: %[1]s; color: %[2]s; border: 1px solid %[3]s; padding: 3px; }
+	w.w.SetStyleSheet(strings.NewReplacer(
+		"$bg", hex(th.Background),
+		"$fg", hex(th.Foreground),
+		"$sel", hex(th.Selection),
+		"$headerBg", hex(th.HeaderBg),
+		"$headerFg", hex(th.HeaderFg),
+		"$focusBg", hex(th.HeaderFocusBg),
+		"$focusFg", hex(th.HeaderFocusFg),
+		"$font", strconv.Quote(w.app.cfg.FontFamily),
+		"$size", strconv.FormatFloat(w.app.cfg.FontSize*headerFontScale, 'f', 1, 64),
+	).Replace(`
+		QWidget#termitePane { background: $bg; }
+		QLineEdit#termiteSearch { background: $bg; color: $fg; border: 1px solid $sel; padding: 3px; }
 		QLineEdit#termiteSearch[notFound="true"] { color: #dc322f; }
-		QLabel#termiteHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; font-family: %[6]q; font-size: %.1[7]fpt; }
-		QLabel#termiteHeader[focused="true"] { background: %[9]s; color: %[8]s; }
+		QLabel#termiteHeader { background: $headerBg; color: $headerFg; padding: 2px 10px; font-family: $font; font-size: $sizept; }
+		QLabel#termiteHeader[focused="true"] { background: $focusBg; color: $focusFg; }
 		QLabel#termiteHeader[problem="true"] { color: #dc322f; }
-	`, bg, fg, sel, fmt.Sprintf("#%06x", th.HeaderBg), fmt.Sprintf("#%06x", th.HeaderFg),
-		w.app.cfg.FontFamily, w.app.cfg.FontSize*headerFontScale, fmt.Sprintf("#%06x", th.HeaderFocusFg), fmt.Sprintf("#%06x", th.HeaderFocusBg)))
+	`))
 }
 
 func (w *Window) allPanes() []*Pane {
@@ -195,8 +204,9 @@ func (w *Window) updateTitles() {
 		if r := []rune(short); len(r) > 30 {
 			short = "…" + string(r[len(r)-29:]) // keep the end, like the header
 		}
-		w.tabs.SetTabText(w.indexOf(t), short)
-		w.tabs.SetTabToolTip(w.indexOf(t), title)
+		i := w.indexOf(t)
+		w.tabs.SetTabText(i, short)
+		w.tabs.SetTabToolTip(i, title)
 	}
 }
 
@@ -217,8 +227,8 @@ func (w *Window) moveTab(d int) {
 }
 
 func paneRect(p *Pane) rect {
-	g := p.GL.MapToGlobalWithQPoint(qt.NewQPoint2(0, 0))
-	return rect{float64(g.X()), float64(g.Y()), float64(p.GL.Width()), float64(p.GL.Height())}
+	x, y := mapToGlobal(p.GL.QWidget, 0, 0)
+	return rect{float64(x), float64(y), float64(p.GL.Width()), float64(p.GL.Height())}
 }
 
 // cursorPoint returns the global position of the middle of p's text cursor.
@@ -252,12 +262,8 @@ func (w *Window) focusDirection(p *Pane, dx, dy int) {
 	if dy != 0 {
 		probe = px
 	}
-	var best *Pane
 	if i := neighbour(paneRect(p), probe, rects, dx, dy); i >= 0 {
-		best = others[i]
-	}
-	if best != nil {
-		best.GL.SetFocus()
+		others[i].GL.SetFocus()
 	}
 }
 

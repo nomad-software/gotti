@@ -79,7 +79,7 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 		}
 		env = append(env, e)
 	}
-	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=termite", "TERM_PROGRAM_VERSION=1.0")
+	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=termite", "TERM_PROGRAM_VERSION="+term.Version)
 	cmd.Env = env
 	f, err := cpty.StartWithSize(cmd, &cpty.Winsize{Cols: uint16(o.Cols), Rows: uint16(o.Rows)})
 	if err != nil {

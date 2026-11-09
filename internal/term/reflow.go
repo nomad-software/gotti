@@ -4,6 +4,12 @@ package term
 // soft-wrapped lines are re-joined and re-split at the new width; the
 // cursor (cx, cy in screen coordinates) is tracked through the reflow and
 // its new position returned.
+//
+// Reflow runs twice: a first pass only measures the result (how many
+// lines, where the cursor and the last content land), then a second pass
+// writes the lines that are kept straight into the new ring. Nothing else
+// is allocated, which matters because a window being resized reflows every
+// pane on each step.
 func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, int) {
 	if cols < 1 {
 		cols = 1
@@ -14,31 +20,82 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 	if !reflow {
 		return b.resizeClip(cols, rows, cx, cy)
 	}
-	scrollback := b.maxLines - b.Rows
-	nb := &Buffer{Cols: cols, Rows: rows, maxLines: rows + scrollback, Evicted: b.Evicted}
+	nb := &Buffer{Cols: cols, Rows: rows, maxLines: rows + b.maxLines - b.Rows, Evicted: b.Evicted}
 
-	var out []Cell
-	var outWrap []bool
-	curLine, curX := -1, 0
+	st := b.reflow(cols, cx, cy, 0, 0, nil, nil)
+	// Drop empty lines below both the cursor and the last content line.
+	n := max(st.curLine, st.last) + 1
+	curLine := st.curLine
+	if curLine < 0 {
+		curLine = n - 1
+	}
+	// Keep the cursor on screen even if content below it overflows.
+	if n-curLine > rows {
+		n = curLine + rows
+	}
+	total := max(n, rows) // short output is padded with blank lines
+	first := max(0, total-nb.maxLines)
+
+	nb.cells = make([]Cell, nb.maxLines*cols)
+	nb.wrapped = make([]bool, nb.maxLines)
+	b.reflow(cols, cx, cy, first, n, nb.cells, nb.wrapped)
+	nb.Evicted += int64(first)
+	nb.count = total - first
+	nb.dirty = make([]bool, rows)
+	nb.allDirty = true
+
+	ncy := clamp(curLine-(total-rows), 0, rows-1)
+	ncx := min(st.curX, cols-1)
+	return nb, ncx, ncy
+}
+
+// reflowStats describes the output of a reflow pass.
+type reflowStats struct {
+	lines   int // output lines
+	curLine int // output line of the cursor, or -1
+	curX    int
+	last    int // last output line with content or a soft wrap, or -1
+}
+
+// reflow re-splits b's paragraphs (logical lines joined by soft wraps) at
+// width cols. Output lines lo to hi-1 are written to dst and dstWrap,
+// starting at row 0; the others are only counted, so a pass with lo == hi
+// measures the result without writing anything. dst must be zeroed.
+func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) reflowStats {
+	st := reflowStats{curLine: -1, last: -1}
 	cursorLogical := b.count - b.Rows + cy
 
-	line := make([]Cell, cols)
+	var line []Cell // the output line being built, nil when not kept
 	lx := 0
-	emit := func(wrapped bool) {
-		out = append(out, line...)
-		outWrap = append(outWrap, wrapped)
-		fillCells(line, Cell{})
-		lx = 0
+	content := false
+	begin := func() {
+		line, lx, content = nil, 0, false
+		if st.lines >= lo && st.lines < hi {
+			k := (st.lines - lo) * cols
+			line = dst[k : k+cols : k+cols]
+		}
 	}
+	emit := func(wrapped bool) {
+		if line != nil {
+			dstWrap[st.lines-lo] = wrapped
+		}
+		if wrapped || content {
+			st.last = st.lines
+		}
+		st.lines++
+		begin()
+	}
+	begin()
+
 	var para []Cell
 	for i := 0; i < b.count; {
-		// Collect one paragraph (lines joined by soft wraps).
+		// Collect one paragraph.
 		para = para[:0]
 		cursorOff := -1
 		j := i
 		for {
 			l := b.LogicalLine(j)
-			wrapped := b.wrapped[b.phys(j)]
+			wrapped := b.Wrapped(j)
 			n := len(l)
 			if !wrapped {
 				n = contentLen(l)
@@ -57,8 +114,8 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 			}
 		}
 		i = j
-		// Re-split the paragraph at the new width.
-		for k := 0; k < len(para); k++ {
+		// Re-split it at the new width.
+		for k := range para {
 			c := para[k]
 			if c.Attr&(AttrWideCont|AttrWrapPad) != 0 {
 				continue // re-generated after its head / layout only
@@ -68,97 +125,49 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 				w = 2
 			}
 			if lx+w > cols {
-				if lx < cols {
+				if line != nil && lx < cols {
 					line[lx].Attr |= AttrWrapPad // the wide char wraps
 				}
 				emit(true)
 			}
 			if k == cursorOff {
-				curLine, curX = len(outWrap), lx
+				st.curLine, st.curX = st.lines, lx
 			}
-			line[lx] = c
-			if w == 2 && cols >= 2 {
-				line[lx+1] = Cell{Fg: c.Fg, Bg: c.Bg, Attr: AttrWideCont | c.Attr&AttrStyleMask}
-			} else if w == 2 {
-				line[lx].Attr &^= AttrWide
+			if w == 2 && cols < 2 {
+				c.Attr &^= AttrWide
+				w = 1
 			}
+			if line != nil {
+				line[lx] = c
+				if w == 2 {
+					line[lx+1] = Cell{Fg: c.Fg, Bg: c.Bg, Attr: AttrWideCont | c.Attr&AttrStyleMask}
+				}
+			}
+			content = content || isContent(&c)
 			lx += w
 			if k+1 == cursorOff && k == len(para)-1 {
 				// cursor right after the last character
-				if lx >= cols {
-					curLine, curX = len(outWrap), cols-1
-				} else {
-					curLine, curX = len(outWrap), lx
-				}
+				st.curLine, st.curX = st.lines, min(lx, cols-1)
 			}
 		}
-		if cursorOff >= 0 && curLine < 0 {
-			curLine, curX = len(outWrap), min(lx, cols-1)
+		if cursorOff >= 0 && st.curLine < 0 {
+			st.curLine, st.curX = st.lines, min(lx, cols-1)
 		}
 		emit(false)
 	}
+	return st
+}
 
-	n := len(outWrap)
-	// Drop empty lines below the cursor and the last content line.
-	last := curLine
-	for k := n - 1; k > last; k-- {
-		if contentLen(out[k*cols:(k+1)*cols]) > 0 || outWrap[k] {
-			last = k
-			break
-		}
-	}
-	if last+1 < n {
-		n = last + 1
-	}
-	if curLine < 0 {
-		curLine = n - 1
-	}
-	// Ensure the cursor is on screen even if content below it overflows.
-	if n-curLine > rows {
-		n = curLine + rows
-	}
-	if n < rows {
-		pad := rows - n
-		out = append(out[:n*cols], make([]Cell, pad*cols)...)
-		outWrap = append(outWrap[:n], make([]bool, pad)...)
-		n = rows
-	}
-	first := 0
-	if n > nb.maxLines {
-		first = n - nb.maxLines
-		nb.Evicted += int64(first)
-	}
-	count := n - first
-	alloc := nb.maxLines
-	nb.cells = make([]Cell, alloc*cols)
-	copy(nb.cells, out[first*cols:n*cols])
-	nb.wrapped = make([]bool, alloc)
-	copy(nb.wrapped, outWrap[first:n])
-	nb.count = count
-	nb.dirty = make([]bool, rows)
-	nb.allDirty = true
-	ncy := curLine - (n - rows)
-	ncx := curX
-	if ncy < 0 {
-		ncy = 0
-	}
-	if ncy >= rows {
-		ncy = rows - 1
-	}
-	if ncx >= cols {
-		ncx = cols - 1
-	}
-	return nb, ncx, ncy
+// isContent reports whether a cell is more than a blank: trailing cells
+// that are not content are trimmed from hard-wrapped lines.
+func isContent(c *Cell) bool {
+	return c.Ch != 0 || !c.Bg.IsDefault() || c.Attr&^(AttrWideCont|AttrWrapPad) != 0 || c.Extra != 0
 }
 
 // contentLen returns the length of l without trailing blank cells.
 func contentLen(l []Cell) int {
 	n := len(l)
-	for n > 0 {
-		c := &l[n-1]
-		if c.Ch != 0 || !c.Bg.IsDefault() || c.Attr&^(AttrWideCont|AttrWrapPad) != 0 || c.Extra != 0 {
-			break
-		}
+	for n > 0 && !isContent(&l[n-1]) {
 		n--
 	}
 	return n

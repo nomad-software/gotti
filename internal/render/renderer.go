@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unsafe"
 
@@ -480,11 +481,29 @@ func inMatch(m term.Match, abs int64, x int) bool {
 	return !p.Less(m.Start) && p.Less(m.End)
 }
 
-func (r *Renderer) matchAt(abs int64, x int) int {
-	for i, m := range r.view.Matches {
-		if inMatch(m, abs, x) {
-			return i
-		}
+// matchCursor finds the search match under each cell of a row as x
+// increases. Matches are sorted and don't overlap, so it only moves forward
+// and costs O(1) per cell however many matches there are.
+type matchCursor struct {
+	ms  []term.Match
+	i   int
+	abs int64
+}
+
+func newMatchCursor(ms []term.Match, abs int64) matchCursor {
+	// The first match that ends on or after this row.
+	i := sort.Search(len(ms), func(i int) bool { return ms[i].End.Line >= abs })
+	return matchCursor{ms: ms, i: i, abs: abs}
+}
+
+// at returns the index of the match covering column x, or -1.
+func (m *matchCursor) at(x int) int {
+	p := term.Pos{Line: m.abs, Col: x}
+	for m.i < len(m.ms) && !p.Less(m.ms[m.i].End) {
+		m.i++
+	}
+	if m.i < len(m.ms) && !p.Less(m.ms[m.i].Start) {
+		return m.i
 	}
 	return -1
 }
@@ -493,6 +512,15 @@ var ligatureCandidates = []string{
 	"<!--", "===", "!==", "<=>", "->>", "<<-", "...", "|||", "&&&", "<->", "-->", "<--", "=>>", "|>>", "::=", "/**", "**/",
 	"->", "<-", "=>", "<=", ">=", "==", "!=", "&&", "||", "::", "..", "//", "/*", "*/", "++", "--", "<<", ">>", "|>", "<|", ":=", "=<", "##", "~>", "<~", "www",
 }
+
+// ligatureStart flags the bytes a ligature candidate can begin with, so
+// most cells skip the candidate scan.
+var ligatureStart = func() (t [128]bool) {
+	for _, c := range ligatureCandidates {
+		t[c[0]] = true
+	}
+	return
+}()
 
 // buildRow fills the instance slots for view row y.
 func (r *Renderer) buildRow(y int) {
@@ -536,6 +564,7 @@ func (r *Renderer) buildRow(y int) {
 			g.Flags = 0
 		}
 	}
+	matches := newMatchCursor(r.view.Matches, abs)
 	addRect := func(px, w int, color uint32) {
 		if nr > 0 {
 			last := &rects[nr-1]
@@ -575,7 +604,7 @@ func (r *Renderer) buildRow(y int) {
 				fg = r.Style.SelFg
 			}
 		} else if len(r.view.Matches) > 0 {
-			if i := r.matchAt(abs, x); i >= 0 {
+			if i := matches.at(x); i >= 0 {
 				if i == r.view.Current {
 					bg = r.Style.CurrentMatchBg
 				} else {
@@ -611,7 +640,7 @@ func (r *Renderer) buildRow(y int) {
 				style |= styleItalic
 			}
 			// optional ligatures over runs of ASCII punctuation
-			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 {
+			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 && ligatureStart[c.Ch] {
 				if n, s := r.ligatureAt(line, x, style, fg); n > 1 {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them

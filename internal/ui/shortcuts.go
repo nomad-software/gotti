@@ -157,12 +157,12 @@ func (a *App) shortcutsTab() (page *qt.QWidget, read func() (map[string]string, 
 	for i, sa := range shortcutActions {
 		e := qt.NewQKeySequenceEdit(inner)
 		e.SetClearButtonEnabled(true)
-		e.SetKeySequence(qt.NewQKeySequence2(chordToQt(a.cfg.Keybindings[sa.action])))
+		setKeySequence(e, chordToQt(a.cfg.Keybindings[sa.action]))
 		// One chord per action: drop anything typed after the first.
 		e.OnKeySequenceChanged(func(ks *qt.QKeySequence) {
 			if ks.Count() > 1 {
 				first, _, _ := strings.Cut(ks.ToString(), ", ")
-				e.SetKeySequence(qt.NewQKeySequence2(first))
+				setKeySequence(e, first)
 			}
 		})
 		edits[i] = e
@@ -174,7 +174,7 @@ func (a *App) shortcutsTab() (page *qt.QWidget, read func() (map[string]string, 
 	defaults := qt.NewQPushButton3("Restore Defaults")
 	defaults.OnClicked(func() {
 		for i, sa := range shortcutActions {
-			edits[i].SetKeySequence(qt.NewQKeySequence2(chordToQt(config.DefaultKeybindings[sa.action])))
+			setKeySequence(edits[i], chordToQt(config.DefaultKeybindings[sa.action]))
 		}
 	})
 	row := qt.NewQHBoxLayout(nil)
