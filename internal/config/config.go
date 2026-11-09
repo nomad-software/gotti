@@ -1,4 +1,4 @@
-// Package config loads gotti's JSON configuration, watches it for changes
+// Package config loads termite's JSON configuration, watches it for changes
 // and defines the built-in colour themes.
 package config
 
@@ -114,10 +114,10 @@ func Default() *Config {
 // Dir returns the configuration directory.
 func Dir() string {
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
-		return filepath.Join(d, "gotti")
+		return filepath.Join(d, "termite")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "gotti")
+	return filepath.Join(home, ".config", "termite")
 }
 
 // Path returns the configuration file path.

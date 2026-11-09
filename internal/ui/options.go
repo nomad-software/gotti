@@ -6,8 +6,8 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
-	"gotti/internal/desktop"
+	"termite/internal/config"
+	"termite/internal/desktop"
 )
 
 // choice is a combo box over a fixed list of config values.

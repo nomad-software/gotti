@@ -38,7 +38,7 @@ func New(parent *qt.QWidget) *Widget {
 	if parent != nil {
 		p = parent.UnsafePointer()
 	}
-	w.ptr = C.gotti_glwidget_new(C.uintptr_t(w.handle), p)
+	w.ptr = C.termite_glwidget_new(C.uintptr_t(w.handle), p)
 	w.QWidget = qt.UnsafeNewQWidget(w.ptr)
 	w.QWidget.OnDestroyed(func() { w.handle.Delete() })
 	return w
@@ -46,49 +46,49 @@ func New(parent *qt.QWidget) *Widget {
 
 // SetIMRect tells input methods where the text cursor is (widget coords).
 func (w *Widget) SetIMRect(x, y, width, height int) {
-	C.gotti_glwidget_set_im_rect(w.ptr, C.int(x), C.int(y), C.int(width), C.int(height))
+	C.termite_glwidget_set_im_rect(w.ptr, C.int(x), C.int(y), C.int(width), C.int(height))
 }
 
 // MakeCurrent makes the widget's context current (outside paint).
-func (w *Widget) MakeCurrent() { C.gotti_glwidget_make_current(w.ptr) }
+func (w *Widget) MakeCurrent() { C.termite_glwidget_make_current(w.ptr) }
 
 // DoneCurrent releases the context.
-func (w *Widget) DoneCurrent() { C.gotti_glwidget_done_current(w.ptr) }
+func (w *Widget) DoneCurrent() { C.termite_glwidget_done_current(w.ptr) }
 
 // ProcAddress resolves a GL function through the current Qt context.
 func ProcAddress(name string) unsafe.Pointer {
 	cs := C.CString(name)
 	defer C.free(unsafe.Pointer(cs))
-	return C.gotti_get_proc_address(cs)
+	return C.termite_get_proc_address(cs)
 }
 
 func fromHandle(h C.uintptr_t) *Widget {
 	return cgo.Handle(h).Value().(*Widget)
 }
 
-//export gottiInitializeGL
-func gottiInitializeGL(h C.uintptr_t) {
+//export termiteInitializeGL
+func termiteInitializeGL(h C.uintptr_t) {
 	if w := fromHandle(h); w.OnInit != nil {
 		w.OnInit()
 	}
 }
 
-//export gottiPaintGL
-func gottiPaintGL(h C.uintptr_t) {
+//export termitePaintGL
+func termitePaintGL(h C.uintptr_t) {
 	if w := fromHandle(h); w.OnPaint != nil {
 		w.OnPaint()
 	}
 }
 
-//export gottiResizeGL
-func gottiResizeGL(h C.uintptr_t, width, height C.int) {
+//export termiteResizeGL
+func termiteResizeGL(h C.uintptr_t, width, height C.int) {
 	if w := fromHandle(h); w.OnResize != nil {
 		w.OnResize(int(width), int(height))
 	}
 }
 
-//export gottiEvent
-func gottiEvent(h C.uintptr_t, ev unsafe.Pointer) C.int {
+//export termiteEvent
+func termiteEvent(h C.uintptr_t, ev unsafe.Pointer) C.int {
 	w := fromHandle(h)
 	if w.OnEvent != nil && w.OnEvent(qt.UnsafeNewQEvent(ev), ev) {
 		return 1

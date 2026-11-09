@@ -1,5 +1,5 @@
 // Package desktop writes the desktop entry which lets a Linux desktop list
-// gotti with its other applications, to be started from there and kept
+// termite with its other applications, to be started from there and kept
 // in a dock or sidebar. It has no dependency on the UI.
 package desktop
 
@@ -14,10 +14,10 @@ import (
 // Name is the name of the desktop entry, without its extension, and of the
 // icon. It is the name main.go gives Qt (QGuiApplication_SetDesktopFileName),
 // by which a Wayland desktop matches a window to its entry.
-const Name = "gotti"
+const Name = "termite"
 
 // DisplayName is the name people see: in menus, window titles and dialogs.
-const DisplayName = "Gotti"
+const DisplayName = "Termite"
 
 // Executable returns the file that starts the program as it is being run: the
 // AppImage it is in, if it is in one, and otherwise the program itself. Inside
@@ -95,7 +95,7 @@ func escape(value string) string {
 }
 
 // Install writes the desktop entry and its icon, as PNG data, that let a
-// Linux desktop list gotti with its applications, so that it can be
+// Linux desktop list termite with its applications, so that it can be
 // started from there and kept in a dock or sidebar. It is called at every
 // start, and rewrites the entry whenever the program is run from somewhere
 // else or under another name, so that the entry always starts the copy last
@@ -119,8 +119,8 @@ func Install(icon []byte) error {
 }
 
 // Write writes the desktop entry and the icon, as PNG data, into the data
-// folder given: the entry to applications/gotti.desktop and the icon to
-// icons/hicolor/256x256/apps/gotti.png. Each is written only if it is
+// folder given: the entry to applications/termite.desktop and the icon to
+// icons/hicolor/256x256/apps/termite.png. Each is written only if it is
 // not already so, and in a way that leaves the old file whole if it fails.
 func Write(data, exec, class string, icon []byte) error {
 	entry := filepath.Join(data, "applications", Name+".desktop")

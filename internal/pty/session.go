@@ -16,7 +16,7 @@ import (
 	cpty "github.com/creack/pty"
 	"golang.org/x/sys/unix"
 
-	"gotti/internal/term"
+	"termite/internal/term"
 )
 
 const readBufSize = 128 << 10 // read in large chunks (well above 64 KB)
@@ -79,7 +79,7 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 		}
 		env = append(env, e)
 	}
-	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=gotti", "TERM_PROGRAM_VERSION=1.0")
+	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=termite", "TERM_PROGRAM_VERSION=1.0")
 	cmd.Env = env
 	f, err := cpty.StartWithSize(cmd, &cpty.Winsize{Cols: uint16(o.Cols), Rows: uint16(o.Rows)})
 	if err != nil {

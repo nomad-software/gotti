@@ -7,9 +7,9 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
-	"gotti/internal/desktop"
-	"gotti/internal/term"
+	"termite/internal/config"
+	"termite/internal/desktop"
+	"termite/internal/term"
 )
 
 // shortcutLabel returns the display form of the key bound to action

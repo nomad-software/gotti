@@ -13,21 +13,21 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
-	"gotti/internal/desktop"
-	"gotti/internal/input"
-	"gotti/internal/pty"
-	"gotti/internal/qtgl"
-	"gotti/internal/render"
-	"gotti/internal/term"
+	"termite/internal/desktop"
+	"termite/internal/input"
+	"termite/internal/pty"
+	"termite/internal/qtgl"
+	"termite/internal/render"
+	"termite/internal/term"
 )
 
 var glInitialized bool
 
-// Debug timing hooks (GOTTI_DEBUG=startup,latency).
+// Debug timing hooks (TERMITE_DEBUG=startup,latency).
 var (
 	ProcessStart   = time.Now()
-	debugStartup   = strings.Contains(os.Getenv("GOTTI_DEBUG"), "startup")
-	debugLatency   = strings.Contains(os.Getenv("GOTTI_DEBUG"), "latency")
+	debugStartup   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "startup")
+	debugLatency   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "latency")
 	firstFrameDone bool
 )
 
@@ -52,7 +52,7 @@ type Pane struct {
 	view    render.View
 	viewTop int64 // -1: follow output
 	// scrollbar over the scrollback; its values are lines above sbBase
-	// (the oldest line kept). sbSetting is set while gotti moves it.
+	// (the oldest line kept). sbSetting is set while termite moves it.
 	scrollbar     *qt.QScrollBar
 	sbBase        int64
 	sbSetting     bool
@@ -102,14 +102,14 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	a.applyTerminalSettings(p)
 
 	p.Widget = qt.NewQWidget(nil)
-	p.Widget.SetObjectName("gottiPane")
+	p.Widget.SetObjectName("termitePane")
 	lay := qt.NewQVBoxLayout(p.Widget)
 	lay.SetContentsMargins(0, 0, 0, 0)
 	lay.SetSpacing(0)
 	p.setupHeader()
 	lay.AddWidget(p.header.QWidget)
 	p.searchBar = qt.NewQLineEdit(p.Widget)
-	p.searchBar.SetObjectName("gottiSearch")
+	p.searchBar.SetObjectName("termiteSearch")
 	p.searchBar.SetPlaceholderText("Search scrollback  (Enter: older, Shift+Enter: newer, Esc: close)")
 	p.searchBar.Hide()
 	p.GL = qtgl.New(p.Widget)
@@ -259,7 +259,7 @@ func (p *Pane) onExit() {
 func (p *Pane) initGL() {
 	if !glInitialized {
 		if err := gl.InitWithProcAddrFunc(qtgl.ProcAddress); err != nil {
-			fmt.Fprintln(os.Stderr, "gotti: OpenGL init failed:", err)
+			fmt.Fprintln(os.Stderr, "termite: OpenGL init failed:", err)
 			os.Exit(1)
 		}
 		glInitialized = true
@@ -273,7 +273,7 @@ func (p *Pane) initGL() {
 	}
 	p.R.Style = p.app.styleFor(p)
 	if err := p.R.InitGL(); err != nil {
-		fmt.Fprintln(os.Stderr, "gotti:", err)
+		fmt.Fprintln(os.Stderr, "termite:", err)
 		os.Exit(1)
 	}
 	p.updateGridSize()
@@ -333,11 +333,11 @@ func (p *Pane) paint() {
 	p.R.Render()
 	if debugStartup && !firstFrameDone {
 		firstFrameDone = true
-		fmt.Fprintf(os.Stderr, "gotti: first frame after %v\n", time.Since(ProcessStart))
+		fmt.Fprintf(os.Stderr, "termite: first frame after %v\n", time.Since(ProcessStart))
 	}
 	if debugLatency && !p.keyTime.IsZero() {
 		gl.Finish()
-		fmt.Fprintf(os.Stderr, "gotti: key-to-frame %v\n", time.Since(p.keyTime))
+		fmt.Fprintf(os.Stderr, "termite: key-to-frame %v\n", time.Since(p.keyTime))
 		p.keyTime = time.Time{}
 	}
 	// tell input methods where the cursor is (logical pixels)

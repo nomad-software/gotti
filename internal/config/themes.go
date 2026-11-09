@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"gotti/internal/term"
+	"termite/internal/term"
 )
 
 // ThemeSpec is a colour theme as stored in the config file. Colours are
@@ -68,7 +68,7 @@ var solarizedPalette = []string{
 	base03, orange, base01, base00, base0, violet, base1, base3,
 }
 
-// BuiltinThemes are the themes Gotti ships with. They seed the config's
+// BuiltinThemes are the themes Termite ships with. They seed the config's
 // theme list and can be restored from the options dialog.
 var BuiltinThemes = map[string]ThemeSpec{
 	"solarized-dark": {

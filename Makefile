@@ -1,4 +1,4 @@
-BINARY := gotti
+BINARY := termite
 
 # -s -w leaves out the symbol table and debug information, which roughly
 # halves the size of the binary.
@@ -7,11 +7,11 @@ LDFLAGS := -s -w
 .PHONY: build run test fuzz bench vet icons screenshot clean
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/gotti
-	go build -ldflags "$(LDFLAGS)" -o bin/gotti-headless ./cmd/gotti-headless
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
+	go build -ldflags "$(LDFLAGS)" -o test/termite-headless ./test/headless
 
 run: build
-	./bin/$(BINARY)
+	./$(BINARY)
 
 # Every run of the tests has a timeout, so that one that hangs fails with
 # the stacks of what it was waiting on, rather than waiting for ever.
@@ -30,9 +30,9 @@ vet:
 	go vet ./...
 
 # Draws the program's icon, internal/appicon/appicon.png, from
-# packaging/gotti.svg. Run it again whenever the SVG changes.
+# packaging/termite.svg. Run it again whenever the SVG changes.
 icons:
-	rsvg-convert -w 256 -h 256 packaging/gotti.svg -o internal/appicon/appicon.png
+	rsvg-convert -w 256 -h 256 packaging/termite.svg -o internal/appicon/appicon.png
 
 # Draws the README screenshot, docs/screenshot.png, from a demo layout in a
 # virtual X server. Needs Xvfb, ImageMagick and vim.
@@ -40,4 +40,4 @@ screenshot:
 	packaging/screenshot.sh
 
 clean:
-	rm -rf bin
+	rm -f $(BINARY) test/termite-headless

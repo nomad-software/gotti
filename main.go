@@ -1,4 +1,4 @@
-// gotti is a GPU-accelerated terminal emulator for Linux.
+// termite is a GPU-accelerated terminal emulator for Linux.
 package main
 
 import (
@@ -12,10 +12,10 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/appicon"
-	"gotti/internal/config"
-	"gotti/internal/desktop"
-	"gotti/internal/ui"
+	"termite/internal/appicon"
+	"termite/internal/config"
+	"termite/internal/desktop"
+	"termite/internal/ui"
 )
 
 func init() {
@@ -31,7 +31,7 @@ func main() {
 	pprofAddr := flag.String("pprof", "", "serve net/http/pprof on this address (e.g. localhost:6060)")
 	writeConfig := flag.Bool("write-config", false, "write the default config (JSON) and exit")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: gotti [flags] [-- command args...]\n")
+		fmt.Fprintf(os.Stderr, "usage: termite [flags] [-- command args...]\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -63,7 +63,7 @@ func main() {
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gotti:", err)
+		fmt.Fprintln(os.Stderr, "termite:", err)
 	}
 	var lf *ui.LayoutFile
 	if *layout != "" {
@@ -83,8 +83,8 @@ func main() {
 	qt.QSurfaceFormat_SetDefaultFormat(f)
 
 	qt.NewQApplication(os.Args)
-	qt.QCoreApplication_SetApplicationName("gotti")
-	// Qt appends the display name to every window title (" — Gotti").
+	qt.QCoreApplication_SetApplicationName("termite")
+	// Qt appends the display name to every window title (" — Termite").
 	qt.QGuiApplication_SetApplicationDisplayName(desktop.DisplayName)
 	// Under Wayland this is the name a window goes by, which a desktop
 	// matches to the desktop entry of that name for its icon and its place
@@ -96,9 +96,9 @@ func main() {
 	// the copy that is running now, wherever it is and whatever it is
 	// called, so that it can be started from the desktop's own menus and
 	// kept in a dock or sidebar.
-	if runtime.GOOS == "linux" && os.Getenv("GOTTI_NO_DESKTOP_ENTRY") == "" {
+	if runtime.GOOS == "linux" && os.Getenv("TERMITE_NO_DESKTOP_ENTRY") == "" {
 		if err := desktop.Install(appicon.PNG); err != nil {
-			fmt.Fprintln(os.Stderr, "gotti: the desktop entry could not be written:", err)
+			fmt.Fprintln(os.Stderr, "termite: the desktop entry could not be written:", err)
 		}
 	}
 
@@ -116,6 +116,6 @@ func main() {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "gotti:", err)
+	fmt.Fprintln(os.Stderr, "termite:", err)
 	os.Exit(1)
 }

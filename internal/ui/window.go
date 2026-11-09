@@ -6,8 +6,8 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
-	"gotti/internal/desktop"
+	"termite/internal/config"
+	"termite/internal/desktop"
 )
 
 // Window is a top-level window with tabs.
@@ -21,7 +21,7 @@ type Window struct {
 func newWindow(a *App) *Window {
 	w := &Window{app: a}
 	w.w = qt.NewQWidget(nil)
-	w.w.SetObjectName("gottiWindow")
+	w.w.SetObjectName("termiteWindow")
 	w.w.SetWindowTitle("")
 	w.w.SetWindowIcon(appIcon())
 	width, height := a.cfg.WindowWidth, a.cfg.WindowHeight
@@ -32,8 +32,8 @@ func newWindow(a *App) *Window {
 	lay := qt.NewQVBoxLayout(w.w)
 	lay.SetContentsMargins(0, 0, 0, 0)
 	w.tabs = qt.NewQTabWidget(w.w)
-	w.tabs.SetObjectName("gottiTabs")
-	w.tabs.TabBar().SetObjectName("gottiTabBar")
+	w.tabs.SetObjectName("termiteTabs")
+	w.tabs.TabBar().SetObjectName("termiteTabBar")
 	w.tabs.SetMovable(true)
 	w.tabs.SetTabsClosable(true)
 	w.tabs.SetDocumentMode(true)
@@ -76,15 +76,15 @@ func (w *Window) applyTheme() {
 	bg := fmt.Sprintf("#%06x", th.Background)
 	fg := fmt.Sprintf("#%06x", th.Foreground)
 	sel := fmt.Sprintf("#%06x", th.Selection)
-	// The rules name gotti's own widgets only, so menus and dialogs keep
+	// The rules name termite's own widgets only, so menus and dialogs keep
 	// the desktop's native look.
 	w.w.SetStyleSheet(fmt.Sprintf(`
-		QWidget#gottiPane { background: %[1]s; }
-		QLineEdit#gottiSearch { background: %[1]s; color: %[2]s; border: 1px solid %[3]s; padding: 3px; }
-		QLineEdit#gottiSearch[notFound="true"] { color: #dc322f; }
-		QLabel#gottiHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; font-family: %[6]q; font-size: %.1[7]fpt; }
-		QLabel#gottiHeader[focused="true"] { background: %[9]s; color: %[8]s; }
-		QLabel#gottiHeader[problem="true"] { color: #dc322f; }
+		QWidget#termitePane { background: %[1]s; }
+		QLineEdit#termiteSearch { background: %[1]s; color: %[2]s; border: 1px solid %[3]s; padding: 3px; }
+		QLineEdit#termiteSearch[notFound="true"] { color: #dc322f; }
+		QLabel#termiteHeader { background: %[4]s; color: %[5]s; padding: 2px 10px; font-family: %[6]q; font-size: %.1[7]fpt; }
+		QLabel#termiteHeader[focused="true"] { background: %[9]s; color: %[8]s; }
+		QLabel#termiteHeader[problem="true"] { color: #dc322f; }
 	`, bg, fg, sel, fmt.Sprintf("#%06x", th.HeaderBg), fmt.Sprintf("#%06x", th.HeaderFg),
 		w.app.cfg.FontFamily, w.app.cfg.FontSize*headerFontScale, fmt.Sprintf("#%06x", th.HeaderFocusFg), fmt.Sprintf("#%06x", th.HeaderFocusBg)))
 }
@@ -282,7 +282,7 @@ func (w *Window) saveGeometry() {
 		"window_width": width, "window_height": height, "window_maximized": maximized,
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "gotti: the window size could not be saved:", err)
+		fmt.Fprintln(os.Stderr, "termite: the window size could not be saved:", err)
 		return
 	}
 	c.WindowWidth, c.WindowHeight, c.WindowMaximized = width, height, maximized

@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-gl/gl/v3.3-core/gl"
 
-	"gotti/internal/term"
+	"termite/internal/term"
 )
 
 // rectInst is one background rectangle (12 bytes).

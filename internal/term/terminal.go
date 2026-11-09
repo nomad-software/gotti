@@ -858,7 +858,7 @@ func (t *Terminal) csiDispatch(final byte) {
 				t.reply("\x1b[>1;10;0c")
 			}
 		case 'q': // XTVERSION
-			t.reply("\x1bP>|gotti 1.0\x1b\\")
+			t.reply("\x1bP>|termite 1.0\x1b\\")
 		case 'u': // kitty: push flags
 			st := t.kittyStack()
 			*st = append(*st, ps.Raw(0, 0)&0x1f)

@@ -40,7 +40,7 @@ var windowPalettes = map[string]map[qt.QPalette__ColorRole]string{
 var windowDisabledText = map[string]string{"light": "#a0a0a0", "dark": "#7a7a7a"}
 
 // applyWindowTheme sets the look of menus, dialogs and tabs: "light" and
-// "dark" use the Fusion style with gotti's palettes, "system" the desktop's
+// "dark" use the Fusion style with termite's palettes, "system" the desktop's
 // style and palette.
 func applyWindowTheme(mode string) {
 	if systemStyle == "" {

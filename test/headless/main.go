@@ -1,8 +1,8 @@
-// gotti-headless runs a program on a PTY through the gotti emulator core
+// termite-headless runs a program on a PTY through the termite emulator core
 // and prints the resulting screen. It is used for testing real programs
 // (vim, tmux, htop, vttest) without a GUI.
 //
-//	gotti-headless -size 80x24 -script 'ls{enter}{wait 500}exit{enter}' -- bash
+//	termite-headless -size 80x24 -script 'ls{enter}{wait 500}exit{enter}' -- bash
 //
 // Script tokens: {enter} {esc} {tab} {up} {down} {left} {right} {wait N}
 // {ctrl X} {hex 1b5b41}; other text is sent literally.
@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"gotti/internal/pty"
-	"gotti/internal/term"
+	"termite/internal/pty"
+	"termite/internal/term"
 )
 
 func main() {

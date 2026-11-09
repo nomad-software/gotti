@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gotti/internal/term"
+	"termite/internal/term"
 )
 
 func TestSessionRoundTrip(t *testing.T) {

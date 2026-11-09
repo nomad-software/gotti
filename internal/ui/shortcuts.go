@@ -7,7 +7,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
+	"termite/internal/config"
 )
 
 // shortcutActions lists the bindable actions in the order the options
@@ -50,7 +50,7 @@ var shortcutActions = []struct{ action, label string }{
 	{"reload_config", "Reload config"},
 }
 
-// Key names in Qt's portable key-sequence text and gotti's chord names.
+// Key names in Qt's portable key-sequence text and termite's chord names.
 var qtKeyToChord = map[string]string{
 	"pgup": "pageup", "pgdown": "pagedown", "del": "delete", "ins": "insert", "esc": "escape",
 	"return": "enter", "enter": "enter", "backtab": "tab",
@@ -68,7 +68,7 @@ var chordKeyToQt = map[string]string{
 
 // qtToChord converts Qt portable text ("Ctrl+Shift+PgUp") to a chord
 // string ("ctrl+shift+pageup"). Only the first key of a sequence is used.
-// Shifted symbols are recorded by their base key, as gotti matches them.
+// Shifted symbols are recorded by their base key, as termite matches them.
 func qtToChord(s string) string {
 	s, _, _ = strings.Cut(s, ", ")
 	if s == "" {

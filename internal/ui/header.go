@@ -17,7 +17,7 @@ const headerRefresh = 300 * time.Millisecond
 
 func (p *Pane) setupHeader() {
 	p.header = qt.NewQLabel(p.Widget)
-	p.header.SetObjectName("gottiHeader")
+	p.header.SetObjectName("termiteHeader")
 	p.header.SetAlignment(qt.AlignCenter)
 	// The label must never widen the pane: long paths are elided instead.
 	p.header.SetMinimumWidth(1)

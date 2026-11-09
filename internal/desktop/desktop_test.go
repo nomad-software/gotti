@@ -9,15 +9,15 @@ import (
 )
 
 func TestEntry(t *testing.T) {
-	entry := Entry("/home/me/bin/gotti", "gotti", "/home/me/.local/share/icons/hicolor/256x256/apps/gotti.png")
+	entry := Entry("/home/me/bin/termite", "termite", "/home/me/.local/share/icons/hicolor/256x256/apps/termite.png")
 	for _, line := range []string{
 		"[Desktop Entry]",
 		"Type=Application",
-		"Name=Gotti",
-		"Exec=/home/me/bin/gotti",
-		"TryExec=/home/me/bin/gotti",
-		"Icon=/home/me/.local/share/icons/hicolor/256x256/apps/gotti.png",
-		"StartupWMClass=gotti",
+		"Name=Termite",
+		"Exec=/home/me/bin/termite",
+		"TryExec=/home/me/bin/termite",
+		"Icon=/home/me/.local/share/icons/hicolor/256x256/apps/termite.png",
+		"StartupWMClass=termite",
 	} {
 		if !strings.Contains(entry, line+"\n") {
 			t.Errorf("no %q in\n%s", line, entry)
@@ -30,12 +30,12 @@ func TestEntry(t *testing.T) {
 
 func TestExecQuoting(t *testing.T) {
 	for path, want := range map[string]string{
-		"/opt/gotti":                      "/opt/gotti",
-		"/home/me/My Apps/gotti.AppImage": `"/home/me/My Apps/gotti.AppImage"`,
-		`/tmp/a"b`:                        `"/tmp/a\\"b"`,
-		"/tmp/$HOME/x":                    `"/tmp/\\$HOME/x"`,
-		"/tmp/100%/x":                     "/tmp/100%%/x",
-		`/tmp/back\slash`:                 `"/tmp/back\\\\slash"`,
+		"/opt/termite":                      "/opt/termite",
+		"/home/me/My Apps/termite.AppImage": `"/home/me/My Apps/termite.AppImage"`,
+		`/tmp/a"b`:                          `"/tmp/a\\"b"`,
+		"/tmp/$HOME/x":                      `"/tmp/\\$HOME/x"`,
+		"/tmp/100%/x":                       "/tmp/100%%/x",
+		`/tmp/back\slash`:                   `"/tmp/back\\\\slash"`,
 	} {
 		entry := Entry(path, "x", "/x.png")
 		if !strings.Contains(entry, "\nExec="+want+"\n") {
@@ -46,8 +46,8 @@ func TestExecQuoting(t *testing.T) {
 
 func TestExecutable(t *testing.T) {
 	// An AppImage is started again through the AppImage itself.
-	t.Setenv("APPIMAGE", "/home/me/Apps/gotti-x86_64.AppImage")
-	if got, err := Executable(); err != nil || got != "/home/me/Apps/gotti-x86_64.AppImage" {
+	t.Setenv("APPIMAGE", "/home/me/Apps/termite-x86_64.AppImage")
+	if got, err := Executable(); err != nil || got != "/home/me/Apps/termite-x86_64.AppImage" {
 		t.Errorf("in an AppImage: %q, %v", got, err)
 	}
 
@@ -77,14 +77,14 @@ func TestDir(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	data := t.TempDir()
-	entryPath := filepath.Join(data, "applications", "gotti.desktop")
-	iconPath := filepath.Join(data, "icons", "hicolor", "256x256", "apps", "gotti.png")
+	entryPath := filepath.Join(data, "applications", "termite.desktop")
+	iconPath := filepath.Join(data, "icons", "hicolor", "256x256", "apps", "termite.png")
 
-	if err := Write(data, "/opt/one/gotti", "gotti", []byte("png")); err != nil {
+	if err := Write(data, "/opt/one/termite", "termite", []byte("png")); err != nil {
 		t.Fatal(err)
 	}
 	entry, err := os.ReadFile(entryPath)
-	if err != nil || !strings.Contains(string(entry), "Exec=/opt/one/gotti\n") {
+	if err != nil || !strings.Contains(string(entry), "Exec=/opt/one/termite\n") {
 		t.Fatalf("entry %q, %v", entry, err)
 	}
 	if icon, err := os.ReadFile(iconPath); err != nil || string(icon) != "png" {
@@ -97,7 +97,7 @@ func TestWrite(t *testing.T) {
 	// The same again leaves the files alone.
 	old := time.Now().Add(-time.Hour)
 	os.Chtimes(entryPath, old, old)
-	if err := Write(data, "/opt/one/gotti", "gotti", []byte("png")); err != nil {
+	if err := Write(data, "/opt/one/termite", "termite", []byte("png")); err != nil {
 		t.Fatal(err)
 	}
 	if info, _ := os.Stat(entryPath); !info.ModTime().Equal(old) {
@@ -105,11 +105,11 @@ func TestWrite(t *testing.T) {
 	}
 
 	// Run from elsewhere, or under another name, it is rewritten.
-	if err := Write(data, "/home/me/Apps/gotti.AppImage", "gotti", []byte("png")); err != nil {
+	if err := Write(data, "/home/me/Apps/termite.AppImage", "termite", []byte("png")); err != nil {
 		t.Fatal(err)
 	}
 	entry, _ = os.ReadFile(entryPath)
-	if !strings.Contains(string(entry), "Exec=/home/me/Apps/gotti.AppImage\n") || strings.Contains(string(entry), "/opt/one") {
+	if !strings.Contains(string(entry), "Exec=/home/me/Apps/termite.AppImage\n") || strings.Contains(string(entry), "/opt/one") {
 		t.Errorf("entry not rewritten:\n%s", entry)
 	}
 	// No temporary files are left behind.
@@ -121,7 +121,7 @@ func TestWrite(t *testing.T) {
 func TestInstall(t *testing.T) {
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
-	t.Setenv("APPIMAGE", "/home/me/Apps/My gotti.AppImage")
+	t.Setenv("APPIMAGE", "/home/me/Apps/My termite.AppImage")
 
 	icon := []byte("\x89PNG icon")
 	if err := Install(icon); err != nil {
@@ -129,14 +129,14 @@ func TestInstall(t *testing.T) {
 	}
 
 	// The entry starts the AppImage, quoted as its name has a space.
-	entry, err := os.ReadFile(filepath.Join(data, "applications", "gotti.desktop"))
+	entry, err := os.ReadFile(filepath.Join(data, "applications", "termite.desktop"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	self, _ := os.Executable()
 	// The icon is named by its path, not looked for in the theme.
-	image := filepath.Join(data, "icons", "hicolor", "256x256", "apps", "gotti.png")
-	for _, line := range []string{`Exec="/home/me/Apps/My gotti.AppImage"`, "Icon=" + image, "StartupWMClass=" + filepath.Base(self)} {
+	image := filepath.Join(data, "icons", "hicolor", "256x256", "apps", "termite.png")
+	for _, line := range []string{`Exec="/home/me/Apps/My termite.AppImage"`, "Icon=" + image, "StartupWMClass=" + filepath.Base(self)} {
 		if !strings.Contains(string(entry), line+"\n") {
 			t.Errorf("no %q in\n%s", line, entry)
 		}

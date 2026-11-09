@@ -1,4 +1,4 @@
-module gotti
+module termite
 
 go 1.27.3
 

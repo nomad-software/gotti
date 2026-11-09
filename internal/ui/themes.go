@@ -6,7 +6,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
+	"termite/internal/config"
 )
 
 // themeColorFields are the editable non-palette colours of a theme.

@@ -3,7 +3,7 @@ package ui
 import (
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/appicon"
+	"termite/internal/appicon"
 )
 
 var appIconCache *qt.QIcon

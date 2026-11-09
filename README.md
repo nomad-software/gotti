@@ -1,4 +1,4 @@
-# <img src="internal/appicon/appicon.png" alt="" width="40" height="40"> Gotti
+# <img src="internal/appicon/appicon.png" alt="" width="40" height="40"> Termite
 
 A GPU-rendered terminal emulator for Linux, written in Go with Qt 6 (via
 [miqt](https://github.com/mappu/miqt)) and OpenGL 3.3 core. It targets
@@ -6,7 +6,7 @@ A GPU-rendered terminal emulator for Linux, written in Go with Qt 6 (via
 tmux, htop, less and fzf actually use, plus tabs, splits
 and saved layouts.
 
-![Gotti with two tabs: the first split into vim editing Go source with syntax colours beside two stacked shells, one showing bold, italic, underlined, curly-underlined, struck-through and inverse text, the 16-colour palette, a truecolor gradient, box drawing around wide CJK characters and an emoji, braille and shade blocks and an underlined hyperlink, the other a coloured directory listing; each pane has a header with its directory](docs/screenshot.png)
+![Termite with two tabs: the first split into vim editing Go source with syntax colours beside two stacked shells, one showing bold, italic, underlined, curly-underlined, struck-through and inverse text, the 16-colour palette, a truecolor gradient, box drawing around wide CJK characters and an emoji, braille and shade blocks and an underlined hyperlink, the other a coloured directory listing; each pane has a header with its directory](docs/screenshot.png)
 
 The screenshot is drawn by `make screenshot` (needs Xvfb, ImageMagick and
 vim).
@@ -17,33 +17,33 @@ Requirements: Go 1.27+, Qt 6 development files (Widgets, OpenGL,
 OpenGLWidgets), OpenGL 3.3 drivers, a C++17 compiler.
 
 ```sh
-make build                     # or: go build -o bin/gotti ./cmd/gotti
-bin/gotti                      # your $SHELL
-bin/gotti -- htop              # run a command
-bin/gotti --layout work        # open a saved layout
-bin/gotti --write-config       # write the default config.json
+make build                   # or: go build
+./termite                    # your $SHELL
+./termite -- htop            # run a command
+./termite --layout work      # open a saved layout
+./termite --write-config     # write the default config.json
 ```
 
-On every start, Gotti writes a desktop entry
-(`~/.local/share/applications/gotti.desktop`) and its icon
-(`~/.local/share/icons/hicolor/256x256/apps/gotti.png`). These point at
+On every start, Termite writes a desktop entry
+(`~/.local/share/applications/termite.desktop`) and its icon
+(`~/.local/share/icons/hicolor/256x256/apps/termite.png`). These point at
 the copy that is running, so it appears in the desktop's menus and can be
-pinned to a dock. Set `GOTTI_NO_DESKTOP_ENTRY=1` to skip this.
-`packaging/gotti.desktop` is a static entry for packagers. The icon is
-drawn from `packaging/gotti.svg` (`make icons`) and embedded in the
+pinned to a dock. Set `TERMITE_NO_DESKTOP_ENTRY=1` to skip this.
+`packaging/termite.desktop` is a static entry for packagers. The icon is
+drawn from `packaging/termite.svg` (`make icons`) and embedded in the
 binary.
 
 The first build compiles the miqt bindings and takes a few minutes; later
 builds are cached.
 
 Profiling: `--cpuprofile FILE`, `--memprofile FILE`, or `--pprof
-localhost:6060` for live `net/http/pprof`. `GOTTI_DEBUG=startup,latency`
+localhost:6060` for live `net/http/pprof`. `TERMITE_DEBUG=startup,latency`
 prints time-to-first-frame and keypress-to-frame latencies.
 
 ## Configuration
 
-`~/.config/gotti/config.json` (or `$XDG_CONFIG_HOME/gotti`). Changes are
-applied live, with no restart needed. `gotti --write-config` writes every
+`~/.config/termite/config.json` (or `$XDG_CONFIG_HOME/termite`). Changes are
+applied live, with no restart needed. `termite --write-config` writes every
 option with its default. Problems (misspelt keys, bad values, syntax
 errors with their line) are shown in red in every pane's header until the
 file is fixed; whatever is valid still applies.
@@ -122,7 +122,7 @@ and OSC 8 links (Ctrl+hover underlines them). Shift bypasses application
 mouse reporting. In search, Enter goes to older matches, Shift+Enter to
 newer ones, and Esc closes the search bar.
 
-Layouts are saved as JSON under `~/.config/gotti/layouts/`, recording the
+Layouts are saved as JSON under `~/.config/termite/layouts/`, recording the
 split tree, sizes, each pane's working directory and command for every tab.
 Loading a layout replaces the window's tabs with its own. Layouts can be
 removed from the Layouts menu.
@@ -130,8 +130,8 @@ removed from the Layouts menu.
 ## Architecture
 
 ```
-cmd/gotti            Qt application entry point, flags, profiling
-cmd/gotti-headless   runs a program through the emulator core and prints the screen (testing)
+main.go              Qt application entry point, flags, profiling
+test/headless        runs a program through the emulator core and prints the screen (testing)
 internal/term        emulator core: cells, scrollback ring, parser, xterm emulation (no GUI deps)
 internal/pty         child process on a PTY; one reader+parser goroutine per pane
 internal/input       key (xterm + kitty), mouse (SGR) and paste encoding
@@ -167,7 +167,7 @@ go test ./...                                         # unit + golden-screen tes
 go test ./internal/term -fuzz FuzzParser              # parser fuzzing
 go test ./internal/term -bench . -run X               # throughput
 STRESS=1 go test ./internal/term -run StressRandom    # random-sequence hang check
-bin/gotti-headless -size 80x24 -script '1{enter}{wait 500}' -- vttest
+test/termite-headless -size 80x24 -script '1{enter}{wait 500}' -- vttest
 ```
 
 ## Measured results

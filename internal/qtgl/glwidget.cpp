@@ -9,20 +9,20 @@
 #include "glwidget.h"
 
 extern "C" {
-void gottiInitializeGL(uintptr_t h);
-void gottiPaintGL(uintptr_t h);
-void gottiResizeGL(uintptr_t h, int w, int hh);
-int  gottiEvent(uintptr_t h, void* ev);
+void termiteInitializeGL(uintptr_t h);
+void termitePaintGL(uintptr_t h);
+void termiteResizeGL(uintptr_t h, int w, int hh);
+int  termiteEvent(uintptr_t h, void* ev);
 }
 
-class GottiGL : public QOpenGLWidget {
+class TermiteGL : public QOpenGLWidget {
 public:
     uintptr_t handle;
     QRect imRect;
     void setIMRect(const QRect& r) {
         if (imRect != r) { imRect = r; updateMicroFocus(); }
     }
-    GottiGL(uintptr_t h, QWidget* parent) : QOpenGLWidget(parent), handle(h) {
+    TermiteGL(uintptr_t h, QWidget* parent) : QOpenGLWidget(parent), handle(h) {
         setAttribute(Qt::WA_InputMethodEnabled, true);
         setAttribute(Qt::WA_KeyCompression, false);
         setFocusPolicy(Qt::StrongFocus);
@@ -30,9 +30,9 @@ public:
         setUpdateBehavior(QOpenGLWidget::NoPartialUpdate);
     }
 protected:
-    void initializeGL() override { gottiInitializeGL(handle); }
-    void paintGL() override { gottiPaintGL(handle); }
-    void resizeGL(int w, int h) override { gottiResizeGL(handle, w, h); }
+    void initializeGL() override { termiteInitializeGL(handle); }
+    void paintGL() override { termitePaintGL(handle); }
+    void resizeGL(int w, int h) override { termiteResizeGL(handle, w, h); }
     bool focusNextPrevChild(bool) override { return false; } // Tab belongs to the terminal
     bool event(QEvent* e) override {
         switch (e->type()) {
@@ -40,7 +40,7 @@ protected:
         case QEvent::MouseButtonPress: case QEvent::MouseButtonRelease:
         case QEvent::MouseButtonDblClick: case QEvent::MouseMove: case QEvent::Wheel:
         case QEvent::FocusIn: case QEvent::FocusOut: case QEvent::InputMethod:
-            if (gottiEvent(handle, e)) { e->accept(); return true; }
+            if (termiteEvent(handle, e)) { e->accept(); return true; }
             break;
         default:
             break;
@@ -61,16 +61,16 @@ protected:
 };
 
 extern "C" {
-void* gotti_glwidget_new(uintptr_t handle, void* parent) {
-    return static_cast<QWidget*>(new GottiGL(handle, static_cast<QWidget*>(parent)));
+void* termite_glwidget_new(uintptr_t handle, void* parent) {
+    return static_cast<QWidget*>(new TermiteGL(handle, static_cast<QWidget*>(parent)));
 }
-void gotti_glwidget_set_im_rect(void* w, int x, int y, int width, int height) {
-    auto* g = static_cast<GottiGL*>(static_cast<QWidget*>(w));
+void termite_glwidget_set_im_rect(void* w, int x, int y, int width, int height) {
+    auto* g = static_cast<TermiteGL*>(static_cast<QWidget*>(w));
     g->setIMRect(QRect(x, y, width, height));
 }
-void gotti_glwidget_make_current(void* w) { static_cast<GottiGL*>(static_cast<QWidget*>(w))->makeCurrent(); }
-void gotti_glwidget_done_current(void* w) { static_cast<GottiGL*>(static_cast<QWidget*>(w))->doneCurrent(); }
-void* gotti_get_proc_address(const char* name) {
+void termite_glwidget_make_current(void* w) { static_cast<TermiteGL*>(static_cast<QWidget*>(w))->makeCurrent(); }
+void termite_glwidget_done_current(void* w) { static_cast<TermiteGL*>(static_cast<QWidget*>(w))->doneCurrent(); }
+void* termite_get_proc_address(const char* name) {
     QOpenGLContext* ctx = QOpenGLContext::currentContext();
     if (!ctx) return nullptr;
     return reinterpret_cast<void*>(ctx->getProcAddress(name));

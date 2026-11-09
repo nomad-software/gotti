@@ -1,4 +1,4 @@
-// Package ui builds gotti's Qt user interface: windows, tabs, split panes
+// Package ui builds termite's Qt user interface: windows, tabs, split panes
 // and the terminal widgets.
 package ui
 
@@ -11,10 +11,10 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
-	"gotti/internal/config"
-	"gotti/internal/desktop"
-	"gotti/internal/render"
-	"gotti/internal/term"
+	"termite/internal/config"
+	"termite/internal/desktop"
+	"termite/internal/render"
+	"termite/internal/term"
 )
 
 // Broadcast modes.
@@ -60,7 +60,7 @@ func (a *App) reload(c *config.Config, err error) {
 	a.configErr = ""
 	if err != nil {
 		a.configErr = err.Error()
-		fmt.Fprintln(os.Stderr, "gotti:", err)
+		fmt.Fprintln(os.Stderr, "termite:", err)
 	}
 	if c == nil {
 		return

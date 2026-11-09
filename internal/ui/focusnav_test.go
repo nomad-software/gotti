@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"gotti/internal/config"
+	"termite/internal/config"
 )
 
 func TestNeighbour(t *testing.T) {
@@ -86,7 +86,7 @@ func TestChordConversion(t *testing.T) {
 			t.Errorf("chordToQt(%q) = %q, want %q", chord, got, qtText)
 		}
 	}
-	// A shifted symbol is stored by its base key, as gotti matches it.
+	// A shifted symbol is stored by its base key, as termite matches it.
 	if got := qtToChord("Ctrl+Shift++"); got != "ctrl+shift+equal" {
 		t.Errorf("Ctrl+Shift++ -> %q", got)
 	}

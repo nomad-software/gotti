@@ -1,5 +1,5 @@
 // Package appicon holds the program's icon, built into the binary so that the
-// program needs nothing beside it. It is drawn from packaging/gotti.svg by
+// program needs nothing beside it. It is drawn from packaging/termite.svg by
 // make icons.
 package appicon
 

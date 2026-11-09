@@ -1,11 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=Gotti
+Name=Termite
 GenericName=Terminal
 Comment=GPU-rendered terminal emulator with tabs and split panes
-Exec=gotti
-Icon=gotti
+Exec=termite
+Icon=termite
 Categories=System;TerminalEmulator;
 Keywords=shell;prompt;command;commandline;terminal;
 Terminal=false
-StartupWMClass=gotti
+StartupWMClass=termite

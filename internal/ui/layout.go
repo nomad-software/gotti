@@ -10,7 +10,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
+	"termite/internal/config"
 )
 
 // Node is a split tree: either a pane leaf or a splitter with children.
@@ -65,7 +65,7 @@ func (t *Tab) Panes() []*Pane { return t.root.panes(nil) }
 func newTab(w *Window) *Tab {
 	t := &Tab{win: w}
 	t.container = qt.NewQWidget(nil)
-	t.container.SetObjectName("gottiTab")
+	t.container.SetObjectName("termiteTab")
 	t.layout = qt.NewQVBoxLayout(t.container)
 	t.layout.SetContentsMargins(0, 0, 0, 0)
 	t.layout.SetSpacing(0)
@@ -106,7 +106,7 @@ func (t *Tab) Split(p *Pane, orient qt.Orientation, np *Pane) {
 	}
 	// Replace the leaf with a new splitter holding it and the new pane.
 	sp := qt.NewQSplitter3(orient)
-	sp.SetObjectName("gottiSplit")
+	sp.SetObjectName("termiteSplit")
 	sp.SetChildrenCollapsible(false)
 	sp.SetHandleWidth(3)
 	var parentSizes []int

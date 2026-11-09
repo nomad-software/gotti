@@ -5,8 +5,8 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"gotti/internal/config"
-	"gotti/internal/input"
+	"termite/internal/config"
+	"termite/internal/input"
 )
 
 var qtKeys = map[qt.Key]input.Key{
