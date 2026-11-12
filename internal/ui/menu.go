@@ -4,7 +4,9 @@ import (
 	"math"
 	"os"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 	"termite/internal/desktop"
@@ -20,42 +22,42 @@ func (a *App) shortcutLabel(action string) string {
 // menuBuilder adds actions with shortcut hints.
 type menuBuilder struct {
 	a *App
-	m *qt.QMenu
+	m *qtwidgets.QMenu
 }
 
-func (b menuBuilder) item(label, action string, fn func()) *qt.QAction {
+func (b menuBuilder) item(label, action string, fn func()) *qtgui.QAction {
 	text := label
 	if sc := b.a.shortcutLabel(action); sc != "" {
 		text += "\t" + sc
 	}
-	act := b.m.AddActionWithText(text)
+	act := b.m.AddActionText(text)
+	act.OnTriggered(func(bool) { fn() })
+	return act
+}
+
+func (b menuBuilder) check(label string, on bool, fn func(bool)) *qtgui.QAction {
+	act := b.m.AddActionText(label)
+	act.SetCheckable(true)
+	act.SetChecked(on)
 	act.OnTriggered(fn)
 	return act
 }
 
-func (b menuBuilder) check(label string, on bool, fn func(bool)) *qt.QAction {
-	act := b.m.AddActionWithText(label)
-	act.SetCheckable(true)
-	act.SetChecked(on)
-	act.OnTriggeredWithChecked(fn)
-	return act
-}
-
 func (b menuBuilder) sub(title string) menuBuilder {
-	return menuBuilder{a: b.a, m: b.m.AddMenuWithTitle(title)}
+	return menuBuilder{a: b.a, m: b.m.AddMenuTitle(title)}
 }
 
 // radio adds an exclusive group of checkable items.
 func (b menuBuilder) radio(labels []string, values []int, current int, fn func(int)) {
-	g := qt.NewQActionGroup(b.m.QObject)
+	g := qtgui.NewQActionGroup(b.m)
 	g.SetExclusive(true)
 	for i, l := range labels {
 		v := values[i]
-		act := b.m.AddActionWithText(l)
+		act := b.m.AddActionText(l)
 		act.SetCheckable(true)
 		act.SetChecked(v == current)
 		act.SetActionGroup(g)
-		act.OnTriggered(func() { fn(v) })
+		act.OnTriggered(func(bool) { fn(v) })
 	}
 }
 
@@ -64,7 +66,7 @@ func (b menuBuilder) radio(labels []string, values []int, current int, fn func(i
 func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 	a := p.app
 	run := func(action string) func() { return func() { a.runAction(p, action) } }
-	menu := qt.NewQMenu(p.Widget)
+	menu := qtwidgets.NewQMenu(p.Widget)
 	b := menuBuilder{a: a, m: menu}
 
 	// clipboard
@@ -75,7 +77,7 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 		if url := p.linkAt(*at); url != "" {
 			menu.AddSeparator()
 			b.item("Open Link", "", func() { openURL(url) })
-			b.item("Copy Link Address", "", func() { qt.QGuiApplication_Clipboard().SetText(url) })
+			b.item("Copy Link Address", "", func() { qtgui.QGuiApplicationClipboard().SetText(url) })
 		}
 	}
 	menu.AddSeparator()
@@ -105,11 +107,11 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 		rm := lm.sub("Remove")
 		for _, n := range names {
 			rm.item(n, "", func() {
-				if qt.QMessageBox_Question(w.w, "Remove Layout", "Remove the layout \""+n+"\"?") != qt.QMessageBox__Yes {
+				if qtwidgets.QMessageBoxQuestion(w.w, "Remove Layout", "Remove the layout \""+n+"\"?") != qtwidgets.QMessageBoxYes {
 					return
 				}
 				if err := RemoveLayout(n); err != nil {
-					qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
+					qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 				}
 			})
 		}
@@ -118,7 +120,7 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 			lm.item(n, "", func() {
 				lf, err := LoadLayout(n)
 				if err != nil {
-					qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
+					qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 					return
 				}
 				w.loadLayout(lf)
@@ -136,14 +138,18 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 
 	b.item("Options…", "options", run("options"))
 
-	pos := qt.NewQPoint2(x, y)
-	menu.ExecWithPos(pos)
-	pos.Delete()
+	menu.ExecAt(qtcore.QPoint{X: x, Y: y})
 	menu.DeleteLater()
 	if p.exited {
 		return
 	}
-	p.refocus()
+	// Focus goes back to the tab's focused pane, which is a new pane after
+	// a split.
+	if f := p.tab.focused; f != nil && !f.exited {
+		f.refocus()
+	} else {
+		p.refocus()
+	}
 	if findChosen {
 		p.searchBar.SetFocus() // refocus gave it back to the terminal
 	}
@@ -158,7 +164,7 @@ func (p *Pane) contextMenuAtCursor() {
 	st := p.R.Style
 	lx := int(float64(st.PadX+cx*cw) / p.dpr)
 	ly := int(float64(st.PadY+(cy+1)*ch) / p.dpr)
-	gx, gy := mapToGlobal(p.GL.QWidget, lx, ly)
+	gx, gy := mapToGlobal(p.GL, lx, ly)
 	p.showContextMenu(gx, gy, nil)
 }
 
@@ -170,16 +176,15 @@ func (a *App) editConfig(p *Pane) {
 			_ = os.WriteFile(a.cfgPath, config.SampleConfig(), 0o644)
 		}
 	}
-	if !qt.QDesktopServices_OpenUrl(qt.QUrl_FromLocalFile(a.cfgPath)) {
-		qt.QMessageBox_Information(p.Widget, desktop.DisplayName, "Config file: "+a.cfgPath)
+	if !qtgui.QDesktopServicesOpenUrl(qtcore.QUrlFromLocalFile(a.cfgPath)) {
+		qtwidgets.QMessageBoxInformation(p.Widget, desktop.DisplayName, "Config file: "+a.cfgPath)
 		p.refocus()
 	}
 }
 
 // isMonospaced checks whether narrow and wide letters have equal advances.
-func isMonospaced(f *qt.QFont) bool {
-	fm := qt.NewQFontMetricsF(f)
-	defer fm.Delete()
+func isMonospaced(f *qtgui.QFont) bool {
+	fm := qtgui.NewQFontMetricsFWithFont(f)
 	i, m, w := fm.HorizontalAdvance("i"), fm.HorizontalAdvance("M"), fm.HorizontalAdvance("W")
 	return math.Abs(i-m) < 0.5 && math.Abs(m-w) < 0.5
 }

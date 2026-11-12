@@ -1,7 +1,7 @@
 # <img src="internal/appicon/appicon.png" alt="" width="40" height="40"> Termite
 
 A GPU-rendered terminal emulator for Linux, written in Go with Qt 6 (via
-[miqt](https://github.com/mappu/miqt)) and OpenGL 3.3 core. It targets
+[qute](https://github.com/nomad-software/qute)) and OpenGL 3.3 core. It targets
 `TERM=xterm-256color` and implements the xterm subset that shells, vim,
 tmux, htop, less and fzf actually use, plus tabs, splits and saved
 layouts.
@@ -55,8 +55,9 @@ vim).
 ## Build and run
 
 The easiest way to get Termite is the AppImage from a release (see
-[AppImage](#appimage) below). To build it yourself, you need: Go 1.27+, Qt 6 development files (Widgets, OpenGL,
-OpenGLWidgets), OpenGL 3.3 drivers, a C++17 compiler.
+[AppImage](#appimage) below). To build it yourself, you need: Go 1.27+, Qt 6.12 or newer development files
+(Widgets, OpenGL, OpenGLWidgets), `pkg-config`, OpenGL 3.3 drivers and a C++17
+compiler. Termite runs on Linux only.
 
 ```sh
 make build                   # or: go build
@@ -76,8 +77,10 @@ pinned to a dock. Set `TERMITE_NO_DESKTOP_ENTRY=1` to skip this.
 drawn from `packaging/termite.svg` (`make icons`) and embedded in the
 binary.
 
-The first build compiles the miqt bindings and takes a few minutes; later
-builds are cached.
+The first build compiles qute's C++ shims and takes a couple of minutes;
+later builds are cached. Go builds in its own cache, outside the project:
+`make build` leaves only `./termite` (and `test/termite-headless`), and
+`make appimage` works in a temporary folder and leaves only the AppImage.
 
 Profiling: `--cpuprofile FILE`, `--memprofile FILE`, or `--pprof
 localhost:6060` for live `net/http/pprof`. `TERMITE_DEBUG=startup,latency`
@@ -163,8 +166,9 @@ only touches at a corner.
 
 Every pane has a header showing its current directory, from the shell's
 OSC 7 report or the foreground process. Each tab is named after its
-focused pane's header; the window title is just the app name. Titles set
-by programs are ignored.
+focused pane's header, and the window title is the last part of the current
+tab's focused pane's directory (`share` for `/usr/share`). Titles set by
+programs are ignored. A new pane made by splitting takes the keyboard focus.
 
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs
@@ -187,7 +191,7 @@ application.
 
 It is built by a GitHub workflow (`.github/workflows/appimage.yml`), which
 runs the tests and then `packaging/appimage.sh` on Ubuntu 22.04 with Qt's
-own build of Qt 6.9:
+own build of Qt 6.12 (qute needs 6.12 or newer):
 
 - Pushing a tag starting with `v` builds it and attaches it to a release of
   that name: `git tag v1.0.0 && git push origin v1.0.0`.
@@ -226,7 +230,7 @@ internal/term        emulator core: cells, scrollback ring, parser, xterm emulat
 internal/pty         child process on a PTY; one reader+parser goroutine per pane
 internal/input       key (xterm + kitty), mouse (SGR) and paste encoding
 internal/render      glyph atlas, procedural box drawing, OpenGL renderer
-internal/qtgl        C++ QOpenGLWidget shim (miqt has no Qt 6 OpenGLWidgets binding)
+internal/qtgl        the terminal's QOpenGLWidget, a Go subclass of qute's
 internal/ui          windows, tabs, splits, panes, layouts, actions
 internal/config      JSON config, in-place setting writes, themes, key chords
 internal/desktop     desktop entry and icon install
@@ -261,6 +265,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
+DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, focus, title, options), under Xvfb
 make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)
@@ -294,9 +299,6 @@ measured it.
 
 ## Deviations and known gaps
 
-- **QOpenGLWidget**: miqt does not bind Qt 6's OpenGLWidgets module, so
-  `internal/qtgl` adds a small C++ subclass that forwards GL callbacks,
-  input events and IME queries to Go.
 - **PTY reads**: Linux returns at most about 4 KB per `read` on a PTY. The
   reader drains what is already buffered (`poll` with zero timeout) and
   parses in chunks of up to 128 KB, so the parser sees large chunks even

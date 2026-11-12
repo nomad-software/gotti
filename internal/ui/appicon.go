@@ -1,21 +1,19 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtgui"
 
 	"termite/internal/appicon"
 )
 
-var appIconCache *qt.QIcon
+var appIconCache *qtgui.QIcon
 
 // AppIcon returns the program's icon, made once and shared by every window.
-func AppIcon() *qt.QIcon {
+func AppIcon() *qtgui.QIcon {
 	if appIconCache == nil {
-		pixmap := qt.NewQPixmap()
-		// The icon keeps a copy of the picture.
-		defer pixmap.Delete()
-		pixmap.LoadFromDataWithData(appicon.PNG)
-		appIconCache = qt.NewQIcon2(pixmap)
+		pixmap := qtgui.NewQPixmap()
+		pixmap.LoadFromData(appicon.PNG)
+		appIconCache = qtgui.NewQIconWithPixmap(pixmap) // the icon keeps a copy
 	}
 	return appIconCache
 }

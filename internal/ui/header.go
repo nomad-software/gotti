@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 )
 
 // The pane header is a slim bar above the terminal showing the directory
@@ -15,18 +17,27 @@ import (
 // headerRefresh), so an idle pane costs nothing.
 const headerRefresh = 300 * time.Millisecond
 
+// headerLabel is the header's QLabel, which lays its text out again
+// whenever it is resized.
+type headerLabel struct {
+	qtwidgets.QLabelBase
+	p *Pane
+}
+
+// ResizeEvent overrides QWidget::resizeEvent.
+func (h *headerLabel) ResizeEvent(ev *qtgui.QResizeEvent) {
+	h.Super().ResizeEvent(ev)
+	h.p.layoutHeader()
+}
+
 func (p *Pane) setupHeader() {
-	p.header = qt.NewQLabel(p.Widget)
+	p.header = qtwidgets.NewQLabelWith(&headerLabel{p: p}, p.Widget)
 	p.header.SetObjectName("termiteHeader")
-	p.header.SetAlignment(qt.AlignCenter)
+	p.header.SetAlignment(qtcore.AlignCenter)
 	// The label must never widen the pane: long paths are elided instead.
 	p.header.SetMinimumWidth(1)
-	p.header.SetSizePolicy2(qt.QSizePolicy__Ignored, qt.QSizePolicy__Fixed)
-	setBoolProperty(p.header.QWidget, "focused", false)
-	p.header.OnResizeEvent(func(super func(*qt.QResizeEvent), ev *qt.QResizeEvent) {
-		super(ev)
-		p.layoutHeader()
-	})
+	p.header.SetSizePolicy(qtwidgets.NewQSizePolicyWithPolicy(qtwidgets.QSizePolicyIgnored, qtwidgets.QSizePolicyFixed))
+	setBoolProperty(p.header, "focused", false)
 }
 
 // scheduleHeaderRefresh is called from the reader goroutine after output.
@@ -35,7 +46,7 @@ func (p *Pane) scheduleHeaderRefresh() {
 		return
 	}
 	time.AfterFunc(headerRefresh, func() {
-		mainthread.Start(func() {
+		qute.Post(func() {
 			p.headerPending.Store(false)
 			if !p.exited {
 				p.refreshHeader()
@@ -61,16 +72,15 @@ func (p *Pane) refreshHeader() {
 // layoutHeader sets the header text, elided to fit. While the config
 // file has a problem, the header shows it (in red) instead of the path.
 func (p *Pane) layoutHeader() {
-	text, tip, mode := abbreviateHome(p.headerDir), p.headerDir, qt.ElideLeft
+	text, tip, mode := abbreviateHome(p.headerDir), p.headerDir, qtcore.ElideLeft
 	problem := p.app.configErr != ""
 	if problem {
-		text, tip, mode = "⚠ "+p.app.configErr, p.app.configErr, qt.ElideRight
+		text, tip, mode = "⚠ "+p.app.configErr, p.app.configErr, qtcore.ElideRight
 	}
 	if text == "" {
 		text = " "
 	}
-	fm := qt.NewQFontMetrics(p.header.Font())
-	defer fm.Delete()
+	fm := qtgui.NewQFontMetricsWithFont(p.header.Font())
 	// leave room for the label's horizontal padding
 	if w := p.header.Width() - 20; w > 0 {
 		text = fm.ElidedText(text, mode, w)
@@ -79,20 +89,20 @@ func (p *Pane) layoutHeader() {
 	p.header.SetToolTip(tip)
 	if problem != p.headerProblem {
 		p.headerProblem = problem
-		setBoolProperty(p.header.QWidget, "problem", problem)
+		setBoolProperty(p.header, "problem", problem)
 		p.repolishHeader()
 	}
 }
 
 func (p *Pane) repolishHeader() {
 	st := p.header.Style()
-	st.Unpolish(p.header.QWidget)
-	st.Polish(p.header.QWidget)
+	st.Unpolish(p.header)
+	st.Polish(p.header)
 }
 
 // setHeaderFocused highlights the header of the focused pane.
 func (p *Pane) setHeaderFocused(on bool) {
-	setBoolProperty(p.header.QWidget, "focused", on)
+	setBoolProperty(p.header, "focused", on)
 	p.repolishHeader()
 }
 

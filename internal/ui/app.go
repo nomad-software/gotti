@@ -7,7 +7,9 @@ import (
 	"math"
 	"os"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 	"termite/internal/desktop"
@@ -44,6 +46,23 @@ func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
 	a.theme = cfg.ResolveTheme()
 	applyWindowTheme(cfg.WindowTheme)
 	return a
+}
+
+// NewApplication creates the QApplication, with every GL context shared
+// (glyph atlases are shared by the panes) and OpenGL 3.3 core as the default
+// format. Importing qute locks the main goroutine to the main OS thread,
+// where every Qt and GL call is made.
+func NewApplication() {
+	qtcore.QCoreApplicationSetAttribute(qtcore.AA_ShareOpenGLContexts)
+	f := qtgui.NewQSurfaceFormat()
+	f.SetRenderableType(qtgui.QSurfaceFormatOpenGL)
+	f.SetVersion(3, 3)
+	f.SetProfile(qtgui.QSurfaceFormatCoreProfile)
+	f.SetDepthBufferSize(0)
+	f.SetStencilBufferSize(0)
+	f.SetSwapInterval(1) // vsync: at most one frame per refresh
+	qtgui.QSurfaceFormatSetDefaultFormat(f)
+	qtwidgets.NewQApplication(os.Args)
 }
 
 // ---------------------------------------------------------------- config
@@ -187,7 +206,7 @@ func (a *App) windowClosed(w *Window) {
 		}
 	}
 	if len(a.windows) == 0 {
-		qt.QCoreApplication_Quit()
+		qtcore.QCoreApplicationQuit()
 	}
 }
 
@@ -207,7 +226,7 @@ func (a *App) paneTitleChanged(p *Pane) { p.tab.win.updateTitles() }
 func (a *App) bell(p *Pane) {
 	w := p.tab.win.w
 	if !w.IsActiveWindow() || a.focused != p {
-		qt.QApplication_Alert(w)
+		qtwidgets.QApplicationAlert(w)
 	}
 }
 
@@ -279,12 +298,12 @@ func (a *App) runAction(p *Pane, action string) {
 	switch action {
 	case "copy":
 		if s := p.selectionText(); s != "" {
-			qt.QGuiApplication_Clipboard().SetText(s)
+			qtgui.QGuiApplicationClipboard().SetText(s)
 		}
 	case "paste":
-		p.paste(qt.QGuiApplication_Clipboard().Text())
+		p.paste(qtgui.QGuiApplicationClipboard().Text())
 	case "paste_selection":
-		p.paste(qt.QGuiApplication_Clipboard().TextWithMode(qt.QClipboard__Selection))
+		p.paste(qtgui.QGuiApplicationClipboard().TextFull(qtgui.QClipboardSelection))
 	case "new_tab":
 		w.NewTab(p.cwd(), a.defaultCmd)
 	case "new_window":
@@ -292,9 +311,9 @@ func (a *App) runAction(p *Pane, action string) {
 	case "close_pane":
 		p.close()
 	case "split_horizontal":
-		a.split(p, qt.Vertical)
+		a.split(p, qtcore.Vertical)
 	case "split_vertical":
-		a.split(p, qt.Horizontal)
+		a.split(p, qtcore.Horizontal)
 	case "focus_up":
 		w.focusDirection(p, 0, -1)
 	case "focus_down":
@@ -348,27 +367,25 @@ func (a *App) runAction(p *Pane, action string) {
 		p.InGroup = !p.InGroup
 		a.refreshBorders()
 	case "save_layout":
-		ok := false
-		name := qt.QInputDialog_GetText4(w.w, "Save layout", "Layout name:", qt.QLineEdit__Normal, "", &ok)
+		name, ok := qtwidgets.QInputDialogGetTextFull(w.w, "Save layout", "Layout name:", qtwidgets.QLineEditNormal, "", 0, 0)
 		if ok && name != "" {
 			if err := w.SaveLayout(name); err != nil {
-				qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
+				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 			}
 		}
 		p.refocus()
 	case "load_layout":
 		names := ListLayouts()
 		if len(names) == 0 {
-			qt.QMessageBox_Information(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
+			qtwidgets.QMessageBoxInformation(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
 			return
 		}
-		ok := false
-		name := qt.QInputDialog_GetItem4(w.w, "Load layout", "Layout:", names, 0, false, &ok)
+		name, ok := qtwidgets.QInputDialogGetItemFull(w.w, "Load layout", "Layout:", names, 0, false, 0, 0)
 		p.refocus()
 		if ok {
 			lf, err := LoadLayout(name)
 			if err != nil {
-				qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
+				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 				return
 			}
 			w.loadLayout(lf)
@@ -402,12 +419,16 @@ func (a *App) runAction(p *Pane, action string) {
 	}
 }
 
-func (a *App) split(p *Pane, orient qt.Orientation) {
+func (a *App) split(p *Pane, orient qtcore.Orientation) {
 	np, err := a.NewPane(p.tab, p.cwd(), a.defaultCmd)
 	if err != nil {
-		qt.QMessageBox_Warning(p.Widget, desktop.DisplayName, err.Error())
+		qtwidgets.QMessageBoxWarning(p.Widget, desktop.DisplayName, err.Error())
 		return
 	}
 	p.tab.Split(p, orient, np)
+	// The new pane is where typing goes next, also when the split was
+	// chosen from p's context menu, which gives the focus back to the tab's
+	// focused pane when it closes.
+	p.tab.focused = np
 	np.GL.SetFocus()
 }

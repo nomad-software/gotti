@@ -8,7 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 )
@@ -17,15 +18,15 @@ import (
 type Node struct {
 	parent   *Node
 	pane     *Pane
-	split    *qt.QSplitter
+	split    *qtwidgets.QSplitter
 	children []*Node
 }
 
-func (n *Node) widget() *qt.QWidget {
+func (n *Node) widget() *qtwidgets.QWidget {
 	if n.pane != nil {
 		return n.pane.Widget
 	}
-	return n.split.QWidget
+	return n.split.AsQWidget()
 }
 
 func (n *Node) panes(out []*Pane) []*Pane {
@@ -53,8 +54,8 @@ func (n *Node) find(p *Pane) *Node {
 // Tab is one page of a window, holding a split tree.
 type Tab struct {
 	win       *Window
-	container *qt.QWidget
-	layout    *qt.QVBoxLayout
+	container *qtwidgets.QWidget
+	layout    *qtwidgets.QVBoxLayout
 	root      *Node
 	focused   *Pane
 }
@@ -64,10 +65,10 @@ func (t *Tab) Panes() []*Pane { return t.root.panes(nil) }
 
 func newTab(w *Window) *Tab {
 	t := &Tab{win: w}
-	t.container = qt.NewQWidget(nil)
+	t.container = qtwidgets.NewQWidget(nil)
 	t.container.SetObjectName("termiteTab")
-	t.layout = qt.NewQVBoxLayout(t.container)
-	t.layout.SetContentsMargins(0, 0, 0, 0)
+	t.layout = qtwidgets.NewQVBoxLayout(t.container)
+	t.layout.SetContentsMargins(qtcore.QMargins{})
 	t.layout.SetSpacing(0)
 	return t
 }
@@ -81,7 +82,7 @@ func (t *Tab) setRoot(n *Node) {
 
 // Split divides pane p; orient is the QSplitter orientation
 // (Horizontal = side by side, Vertical = stacked).
-func (t *Tab) Split(p *Pane, orient qt.Orientation, np *Pane) {
+func (t *Tab) Split(p *Pane, orient qtcore.Orientation, np *Pane) {
 	node := t.root.find(p)
 	if node == nil {
 		return
@@ -105,7 +106,7 @@ func (t *Tab) Split(p *Pane, orient qt.Orientation, np *Pane) {
 		return
 	}
 	// Replace the leaf with a new splitter holding it and the new pane.
-	sp := qt.NewQSplitter3(orient)
+	sp := qtwidgets.NewQSplitterWithOrientation(orient, nil)
 	sp.SetObjectName("termiteSplit")
 	sp.SetChildrenCollapsible(false)
 	sp.SetHandleWidth(3)
@@ -124,10 +125,10 @@ func (t *Tab) Split(p *Pane, orient qt.Orientation, np *Pane) {
 	leaf.parent = node
 	node.children = []*Node{inner, leaf}
 	if par != nil {
-		par.split.InsertWidget(idx, sp.QWidget)
+		par.split.InsertWidget(idx, sp)
 		par.split.SetSizes(parentSizes)
 	} else {
-		t.layout.AddWidget(sp.QWidget)
+		t.layout.AddWidget(sp)
 	}
 	sp.Show()
 	sz := sp.Sizes()
@@ -178,13 +179,13 @@ func (t *Tab) Remove(p *Pane) bool {
 		gp := par.parent
 		if gp == nil {
 			t.layout.AddWidget(only.widget())
-			t.layout.RemoveWidget(par.split.QWidget)
+			t.layout.RemoveWidget(par.split)
 			only.parent = nil
 			t.root = only
 		} else {
 			// ReplaceWidget puts the child exactly where the splitter was,
 			// with its geometry, so the sibling sizes are left untouched.
-			gp.split.ReplaceWidget(gp.split.IndexOf(par.split.QWidget), only.widget())
+			gp.split.ReplaceWidget(gp.split.IndexOf(par.split), only.widget())
 			for i, c := range gp.children {
 				if c == par {
 					gp.children[i] = only
@@ -243,7 +244,7 @@ func (n *Node) save() LayoutNode {
 		return LayoutNode{Cwd: n.pane.cwd(), Command: n.pane.command}
 	}
 	ln := LayoutNode{Split: "columns", Sizes: n.split.Sizes()}
-	if n.split.Orientation() == qt.Vertical {
+	if n.split.Orientation() == qtcore.Vertical {
 		ln.Split = "rows"
 	}
 	for _, c := range n.children {
@@ -291,9 +292,9 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 	if len(ln.Children) == 0 {
 		return
 	}
-	orient := qt.Horizontal
+	orient := qtcore.Horizontal
 	if ln.Split == "rows" {
-		orient = qt.Vertical
+		orient = qtcore.Vertical
 	}
 	// panes[i] holds ln.Children[i], nil where its pane failed to start,
 	// so each nested split is still built in the right pane.

@@ -4,7 +4,8 @@ import (
 	"math"
 	"unsafe"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
 )
 
 // Font styles (bit flags).
@@ -16,8 +17,10 @@ const (
 // FontSet holds the four font faces and the derived cell metrics, all in
 // device pixels.
 type FontSet struct {
-	faces [4]*qt.QFont
-	DPR   float64
+	faces [4]*qtgui.QFont
+	// metrics measures each face on img (the device glyphs are drawn on).
+	metrics [4]*qtgui.QFontMetricsF
+	DPR     float64
 
 	CellW, CellH int
 	Baseline     int // from cell top
@@ -25,36 +28,35 @@ type FontSet struct {
 	ULThick      int
 	StrikePos    int
 
-	img     *qt.QImage
+	img     *qtgui.QImage
 	imgW    int
 	imgH    int
 	pad     int
-	painter *qt.QPainter
-	white   *qt.QColor
+	painter *qtgui.QPainter
 }
 
 // NewFontSet loads family at size points for the given device pixel ratio.
 func NewFontSet(family string, size, lineHeight, dpr float64) *FontSet {
 	fs := &FontSet{DPR: dpr}
 	for st := 0; st < 4; st++ {
-		f := qt.NewQFont()
+		f := qtgui.NewQFont()
 		f.SetFamilies([]string{family, "monospace"})
-		f.SetStyleHint2(qt.QFont__Monospace, qt.QFont__PreferAntialias|qt.QFont__PreferQuality)
+		f.SetStyleHintFull(qtgui.QFontMonospace, qtgui.QFontPreferAntialias|qtgui.QFontPreferQuality)
 		f.SetFixedPitch(true)
 		f.SetKerning(false)
-		f.SetHintingPreference(qt.QFont__PreferFullHinting)
+		f.SetHintingPreference(qtgui.QFontPreferFullHinting)
 		// QImage paints at 96 dpi; scale the point size for the device.
 		f.SetPointSizeF(size * dpr)
 		if st&styleBold != 0 {
-			f.SetWeight(qt.QFont__Bold)
+			f.SetWeight(qtgui.QFontBold)
 		}
 		if st&styleItalic != 0 {
 			f.SetItalic(true)
 		}
 		fs.faces[st] = f
 	}
-	probe := qt.NewQImage3(4, 4, qt.QImage__Format_ARGB32_Premultiplied)
-	fm := qt.NewQFontMetricsF2(fs.faces[0], probe.QPaintDevice)
+	probe := qtgui.NewQImageWithSize(qtcore.QSize{Width: 4, Height: 4}, qtgui.QImageFormat_ARGB32_Premultiplied)
+	fm := qtgui.NewQFontMetricsFWithFontPaintDevice(fs.faces[0], probe)
 	adv := fm.HorizontalAdvance("M")
 	asc, desc := fm.Ascent(), fm.Descent()
 	fs.CellW = max(1, int(math.Ceil(adv-0.02)))
@@ -70,20 +72,22 @@ func NewFontSet(family string, size, lineHeight, dpr float64) *FontSet {
 	fs.pad = fs.CellW
 	fs.imgW = fs.CellW*4 + 2*fs.pad
 	fs.imgH = fs.CellH + 2*fs.pad
-	fs.img = qt.NewQImage3(fs.imgW, fs.imgH, qt.QImage__Format_ARGB32_Premultiplied)
-	fs.painter = qt.NewQPainter()
-	fs.white = qt.NewQColor3(255, 255, 255)
+	fs.img = qtgui.NewQImageWithSize(qtcore.QSize{Width: fs.imgW, Height: fs.imgH}, qtgui.QImageFormat_ARGB32_Premultiplied)
+	for st, f := range fs.faces {
+		fs.metrics[st] = qtgui.NewQFontMetricsFWithFontPaintDevice(f, fs.img)
+	}
+	fs.painter = qtgui.NewQPainter()
 	return fs
 }
 
 // Delete frees the Qt objects.
 func (fs *FontSet) Delete() {
-	for _, f := range fs.faces {
+	for st, f := range fs.faces {
+		fs.metrics[st].Delete()
 		f.Delete()
 	}
-	fs.img.Delete()
 	fs.painter.Delete()
-	fs.white.Delete()
+	fs.img.Delete()
 }
 
 // rasterized is a trimmed glyph bitmap in BGRA premultiplied format.
@@ -100,41 +104,32 @@ func (fs *FontSet) Rasterize(text string, style int, cells int) rasterized {
 	img := fs.img
 	img.Fill(0)
 	p := fs.painter
-	p.Begin(img.QPaintDevice)
-	p.SetRenderHint(qt.QPainter__TextAntialiasing)
-	p.SetRenderHint(qt.QPainter__Antialiasing)
-	font := fs.faces[style&3]
-	p.SetFont(font)
-	p.SetPen(fs.white)
+	p.Begin(img)
+	p.SetRenderHint(qtgui.QPainterTextAntialiasing)
+	p.SetRenderHint(qtgui.QPainterAntialiasing)
+	p.SetFont(fs.faces[style&3])
+	p.SetPenColor(qtgui.RGB(255, 255, 255))
 	// Scale glyphs (typically emoji or wide symbols) that overflow their cells.
-	fm := qt.NewQFontMetricsF2(font, img.QPaintDevice)
-	adv := fm.HorizontalAdvance(text)
-	fm.Delete()
+	adv := fs.metrics[style&3].HorizontalAdvance(text)
 	avail := float64(cells * fs.CellW)
 	x0, y0 := float64(fs.pad), float64(fs.pad+fs.Baseline)
 	if adv > avail*1.05 && adv > 0 {
 		s := avail / adv
 		// keep the glyph vertically centred around the cell's middle
 		cy := float64(fs.pad) + float64(fs.CellH)/2
-		t := qt.NewQPointF3(x0, cy)
-		p.Translate(t)
-		t.Delete()
+		p.Translate(x0, cy)
 		p.Scale(s, s)
-		pt := qt.NewQPointF3(0, float64(fs.Baseline)-float64(fs.CellH)/2)
-		p.DrawText(pt, text)
-		pt.Delete()
+		p.DrawTextF(qtcore.QPointF{X: 0, Y: float64(fs.Baseline) - float64(fs.CellH)/2}, text)
 	} else {
 		if adv < avail*0.95 && cells > 1 {
 			x0 += (avail - adv) / 2 // centre narrow glyphs in wide cells
 		}
-		pt := qt.NewQPointF3(x0, y0)
-		p.DrawText(pt, text)
-		pt.Delete()
+		p.DrawTextF(qtcore.QPointF{X: x0, Y: y0}, text)
 	}
 	p.End()
 
 	bpl := int(img.BytesPerLine())
-	src := unsafe.Slice(img.Bits(), bpl*fs.imgH)
+	src := unsafe.Slice((*byte)(img.Bits()), bpl*fs.imgH)
 	// bounding box of non-transparent pixels
 	minX, minY, maxX, maxY := fs.imgW, fs.imgH, -1, -1
 	color := false

@@ -4,7 +4,8 @@ import (
 	"math"
 	"strings"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 	"termite/internal/desktop"
@@ -12,12 +13,12 @@ import (
 
 // choice is a combo box over a fixed list of config values.
 type choice struct {
-	box    *qt.QComboBox
+	box    *qtwidgets.QComboBox
 	values []string
 }
 
-func newChoice(parent *qt.QWidget, labels, values []string, current string) choice {
-	c := choice{box: qt.NewQComboBox(parent), values: values}
+func newChoice(parent qtwidgets.QWidgetLike, labels, values []string, current string) choice {
+	c := choice{box: qtwidgets.NewQComboBox(parent), values: values}
 	for i, l := range labels {
 		c.box.AddItem(l)
 		if values[i] == current {
@@ -36,16 +37,16 @@ func (c choice) value() string {
 
 // optionsSection adds a titled group box to layout, with an optional note
 // above its form. Fields stretch to the box's width.
-func optionsSection(layout *qt.QVBoxLayout, title, note string) (*qt.QGroupBox, *qt.QFormLayout) {
-	box := qt.NewQGroupBox3(title)
-	form := qt.NewQFormLayout(box.QWidget)
-	form.SetFieldGrowthPolicy(qt.QFormLayout__AllNonFixedFieldsGrow)
+func optionsSection(layout *qtwidgets.QVBoxLayout, title, note string) (*qtwidgets.QGroupBox, *qtwidgets.QFormLayout) {
+	box := qtwidgets.NewQGroupBoxWithTitle(title, nil)
+	form := qtwidgets.NewQFormLayout(box)
+	form.SetFieldGrowthPolicy(qtwidgets.QFormLayoutAllNonFixedFieldsGrow)
 	if note != "" {
-		label := qt.NewQLabel3(note)
+		label := qtwidgets.NewQLabelWithText(note, nil)
 		label.SetWordWrap(true)
-		form.AddRowWithWidget(label.QWidget)
+		form.AddRowWidget(label)
 	}
-	layout.AddWidget(box.QWidget)
+	layout.AddWidget(box)
 	return box, form
 }
 
@@ -53,99 +54,95 @@ func optionsSection(layout *qt.QVBoxLayout, title, note string) (*qt.QGroupBox, 
 // config file on OK or Apply and applied at once.
 func (a *App) showOptions(p *Pane) {
 	cfg := a.cfg
-	dlg := qt.NewQDialog(p.tab.win.w)
+	dlg := qtwidgets.NewQDialog(p.tab.win.w)
 	dlg.SetWindowTitle("Options")
-	root := qt.NewQVBoxLayout(dlg.QWidget)
-	tabs := qt.NewQTabWidget(dlg.QWidget)
-	general := qt.NewQWidget(nil)
-	gl := qt.NewQVBoxLayout(general)
-	uiPage := qt.NewQWidget(nil)
-	ul := qt.NewQVBoxLayout(uiPage)
+	root := qtwidgets.NewQVBoxLayout(dlg)
+	tabs := qtwidgets.NewQTabWidget(dlg)
+	general := qtwidgets.NewQWidget(nil)
+	gl := qtwidgets.NewQVBoxLayout(general)
+	uiPage := qtwidgets.NewQWidget(nil)
+	ul := qtwidgets.NewQVBoxLayout(uiPage)
 
 	// ---- window theme
 	win, wf := optionsSection(ul, "Window", "")
-	windowTheme := newChoice(win.QWidget, []string{"Light", "Dark", "Follow the system"},
+	windowTheme := newChoice(win, []string{"Light", "Dark", "Follow the system"},
 		[]string{"light", "dark", "system"}, cfg.WindowTheme)
-	wf.AddRow3("Theme:", windowTheme.box.QWidget)
+	wf.AddRowText("Theme:", windowTheme.box)
 
 	// ---- appearance
 	look, lf := optionsSection(ul, "Appearance", "")
 
 	// Every scalable font is offered: Qt's monospace filter relies on the
 	// font's declared spacing, which hides fonts like Iosevka Term.
-	font := qt.NewQFontComboBox(look.QWidget)
-	font.SetFontFilters(qt.QFontComboBox__ScalableFonts)
-	initial := qt.NewQFont2(cfg.FontFamily)
-	font.SetCurrentFont(initial)
-	initial.Delete()
-	size := qt.NewQDoubleSpinBox(look.QWidget)
+	font := qtwidgets.NewQFontComboBox(look)
+	font.SetFontFilters(qtwidgets.QFontComboBoxScalableFonts)
+	font.SetCurrentFont(qtgui.NewQFontWithFamily(cfg.FontFamily))
+	size := qtwidgets.NewQDoubleSpinBox(look)
 	size.SetRange(5, 72)
 	size.SetDecimals(1)
 	size.SetSingleStep(0.5)
 	size.SetSuffix(" pt")
 	size.SetValue(cfg.FontSize)
-	fontRow := qt.NewQHBoxLayout(nil)
-	fontRow.AddWidget2(font.QWidget, 1)
-	fontRow.AddWidget(size.QWidget)
-	lf.AddRow4("Font:", fontRow.QLayout)
-	monoWarn := qt.NewQLabel3("This font does not look monospaced; text may be spaced unevenly.")
+	fontRow := qtwidgets.NewQHBoxLayout(nil)
+	fontRow.AddWidgetFull(font, 1, 0)
+	fontRow.AddWidget(size)
+	lf.AddRowTextLayout("Font:", fontRow)
+	monoWarn := qtwidgets.NewQLabelWithText("This font does not look monospaced; text may be spaced unevenly.", nil)
 	monoWarn.SetWordWrap(true)
-	lf.AddRow3("", monoWarn.QWidget)
+	lf.AddRowText("", monoWarn)
 	checkMono := func() {
-		// CurrentFont returns a copy that miqt frees itself; deleting it
-		// here as well would free it twice.
 		monoWarn.SetVisible(!isMonospaced(font.CurrentFont()))
 	}
 	checkMono()
-	font.OnCurrentFontChanged(func(*qt.QFont) { checkMono() })
+	font.OnCurrentFontChanged(func(*qtgui.QFont) { checkMono() })
 
-	lineHeight := qt.NewQDoubleSpinBox(look.QWidget)
+	lineHeight := qtwidgets.NewQDoubleSpinBox(look)
 	lineHeight.SetRange(0.8, 2.5)
 	lineHeight.SetDecimals(2)
 	lineHeight.SetSingleStep(0.05)
 	lineHeight.SetValue(cfg.LineHeight)
-	lf.AddRow3("Line height:", lineHeight.QWidget)
-	padding := qt.NewQSpinBox(look.QWidget)
+	lf.AddRowText("Line height:", lineHeight)
+	padding := qtwidgets.NewQSpinBox(look)
 	padding.SetRange(0, 50)
 	padding.SetSuffix(" px")
 	padding.SetValue(cfg.Padding)
-	lf.AddRow3("Padding:", padding.QWidget)
-	ligatures := qt.NewQCheckBox3("Ligatures (needs a font with them)")
+	lf.AddRowText("Padding:", padding)
+	ligatures := qtwidgets.NewQCheckBoxWithText("Ligatures (needs a font with them)", nil)
 	ligatures.SetChecked(cfg.Ligatures)
-	lf.AddRow3("", ligatures.QWidget)
-	boldBright := qt.NewQCheckBox3("Show bold text in bright colours")
+	lf.AddRowText("", ligatures)
+	boldBright := qtwidgets.NewQCheckBoxWithText("Show bold text in bright colours", nil)
 	boldBright.SetChecked(cfg.BoldIsBright)
-	lf.AddRow3("", boldBright.QWidget)
-	scrollbar := qt.NewQCheckBox3("Show a scrollbar")
+	lf.AddRowText("", boldBright)
+	scrollbar := qtwidgets.NewQCheckBoxWithText("Show a scrollbar", nil)
 	scrollbar.SetChecked(cfg.Scrollbar)
-	lf.AddRow3("", scrollbar.QWidget)
+	lf.AddRowText("", scrollbar)
 
 	// ---- cursor
 	curBox, cf := optionsSection(ul, "Cursor", "")
-	cursor := newChoice(curBox.QWidget, []string{"Block", "Beam", "Underline"}, []string{"block", "beam", "underline"}, cfg.CursorStyle)
-	cf.AddRow3("Style:", cursor.box.QWidget)
-	blink := qt.NewQCheckBox3("Allow blinking when a program asks for it")
+	cursor := newChoice(curBox, []string{"Block", "Beam", "Underline"}, []string{"block", "beam", "underline"}, cfg.CursorStyle)
+	cf.AddRowText("Style:", cursor.box)
+	blink := qtwidgets.NewQCheckBoxWithText("Allow blinking when a program asks for it", nil)
 	blink.SetChecked(cfg.CursorBlink)
-	cf.AddRow3("", blink.QWidget)
+	cf.AddRowText("", blink)
 
 	// ---- behaviour
 	beh, bf := optionsSection(gl, "Behaviour", "")
-	scrollback := qt.NewQSpinBox(beh.QWidget)
+	scrollback := qtwidgets.NewQSpinBox(beh)
 	scrollback.SetRange(0, 1000000)
 	scrollback.SetSingleStep(1000)
 	scrollback.SetSuffix(" lines")
 	scrollback.SetValue(cfg.Scrollback)
 	scrollback.SetToolTip("Applies to panes opened from now on.")
-	bf.AddRow3("Scrollback:", scrollback.QWidget)
-	copySel := qt.NewQCheckBox3("Copy selected text to the clipboard")
+	bf.AddRowText("Scrollback:", scrollback)
+	copySel := qtwidgets.NewQCheckBoxWithText("Copy selected text to the clipboard", nil)
 	copySel.SetChecked(cfg.CopyOnSelect)
-	bf.AddRow3("", copySel.QWidget)
-	paste := newChoice(beh.QWidget, []string{"Always", "Unless the program uses bracketed paste", "Never"},
+	bf.AddRowText("", copySel)
+	paste := newChoice(beh, []string{"Always", "Unless the program uses bracketed paste", "Never"},
 		[]string{"always", "unbracketed", "never"}, cfg.PasteWarning)
-	bf.AddRow3("Warn on multi-line paste:", paste.box.QWidget)
-	osc52 := newChoice(beh.QWidget, []string{"Off", "Programs may set it", "Programs may set and read it"},
+	bf.AddRowText("Warn on multi-line paste:", paste.box)
+	osc52 := newChoice(beh, []string{"Off", "Programs may set it", "Programs may set and read it"},
 		[]string{"off", "write", "read-write"}, cfg.OSC52)
-	bf.AddRow3("Clipboard access (OSC 52):", osc52.box.QWidget)
+	bf.AddRowText("Clipboard access (OSC 52):", osc52.box)
 
 	gl.AddStretch()
 	ul.AddStretch()
@@ -155,18 +152,18 @@ func (a *App) showOptions(p *Pane) {
 	tabs.AddTab(themesPage, "Colours")
 	keysPage, readKeys := a.shortcutsTab()
 	tabs.AddTab(keysPage, "Keyboard Shortcuts")
-	root.AddWidget(tabs.QWidget)
+	root.AddWidget(tabs)
 
 	// ---- buttons
-	buttons := qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel | qt.QDialogButtonBox__Apply)
-	edit := buttons.AddButton2("Edit Config File…", qt.QDialogButtonBox__ResetRole)
-	root.AddWidget(buttons.QWidget)
+	buttons := qtwidgets.NewQDialogButtonBoxWithStandardButton(qtwidgets.QDialogButtonBoxOk|qtwidgets.QDialogButtonBoxCancel|qtwidgets.QDialogButtonBoxApply, nil)
+	edit := buttons.AddButtonText("Edit Config File…", qtwidgets.QDialogButtonBoxResetRole)
+	root.AddWidget(buttons)
 
 	apply := func() bool {
 		bindings, clashes := readKeys()
 		if len(clashes) > 0 {
 			tabs.SetCurrentWidget(keysPage)
-			qt.QMessageBox_Warning(dlg.QWidget, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
+			qtwidgets.QMessageBoxWarning(dlg, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
 				strings.Join(clashes, "\n")+"\n\nChange or clear them, then try again.")
 			return false
 		}
@@ -193,7 +190,7 @@ func (a *App) showOptions(p *Pane) {
 			a.fontScale = 1 // an explicit size replaces any zoom
 		}
 		if err := config.SetValues(a.cfgPath, values); err != nil {
-			qt.QMessageBox_Warning(dlg.QWidget, desktop.DisplayName, "The settings could not be saved:\n"+err.Error())
+			qtwidgets.QMessageBoxWarning(dlg, desktop.DisplayName, "The settings could not be saved:\n"+err.Error())
 			return false
 		}
 		c, err := config.Load(a.cfgPath)
@@ -206,8 +203,8 @@ func (a *App) showOptions(p *Pane) {
 		}
 	})
 	buttons.OnRejected(dlg.Reject)
-	buttons.Button(qt.QDialogButtonBox__Apply).OnClicked(func() { apply() })
-	edit.OnClicked(func() {
+	buttons.Button(qtwidgets.QDialogButtonBoxApply).OnClicked(func(bool) { apply() })
+	edit.OnClicked(func(bool) {
 		dlg.Reject()
 		a.editConfig(p)
 	})

@@ -10,18 +10,15 @@ import (
 	"runtime"
 	"runtime/pprof"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
 
 	"termite/internal/appicon"
 	"termite/internal/config"
 	"termite/internal/desktop"
 	"termite/internal/ui"
 )
-
-func init() {
-	// Qt and GL calls must stay on the main OS thread.
-	runtime.LockOSThread()
-}
 
 func main() {
 	cfgPath := flag.String("config", config.Path(), "configuration file")
@@ -74,39 +71,31 @@ func main() {
 		}
 	}
 
-	qt.QCoreApplication_SetAttribute(qt.AA_ShareOpenGLContexts)
-	f := qt.NewQSurfaceFormat()
-	f.SetRenderableType(qt.QSurfaceFormat__OpenGL)
-	f.SetVersion(3, 3)
-	f.SetProfile(qt.QSurfaceFormat__CoreProfile)
-	f.SetDepthBufferSize(0)
-	f.SetStencilBufferSize(0)
-	f.SetSwapInterval(1) // vsync: at most one frame per refresh
-	qt.QSurfaceFormat_SetDefaultFormat(f)
+	ui.NewApplication()
+	qtcore.QCoreApplicationSetApplicationName("termite")
+	// No application display name is set: Qt would append it to every
+	// window title, which shows the focused pane's directory alone.
 
-	qt.NewQApplication(os.Args)
-	qt.QCoreApplication_SetApplicationName("termite")
-	// Qt appends the display name to every window title (" — Termite").
-	qt.QGuiApplication_SetApplicationDisplayName(desktop.DisplayName)
 	// Under Wayland this is the name a window goes by, which a desktop
 	// matches to the desktop entry of that name for its icon and its place
 	// in the task bar.
-	qt.QGuiApplication_SetDesktopFileName(desktop.Name)
-	qt.QGuiApplication_SetWindowIcon(ui.AppIcon())
+	qtgui.QGuiApplicationSetDesktopFileName(desktop.Name)
+	qtgui.QGuiApplicationSetWindowIcon(ui.AppIcon())
 
-	// On Linux the desktop is given an entry for the program, which starts
-	// the copy that is running now, wherever it is and whatever it is
-	// called, so that it can be started from the desktop's own menus and
-	// kept in a dock or sidebar.
-	if runtime.GOOS == "linux" && os.Getenv("TERMITE_NO_DESKTOP_ENTRY") == "" {
+	// The desktop is given an entry for the program, which starts the copy
+	// that is running now, wherever it is and whatever it is called, so that
+	// it can be started from the desktop's own menus and kept in a dock or
+	// sidebar.
+	if os.Getenv("TERMITE_NO_DESKTOP_ENTRY") == "" {
 		if err := desktop.Install(appicon.PNG); err != nil {
 			fmt.Fprintln(os.Stderr, "termite: the desktop entry could not be written:", err)
 		}
 	}
 
-	app := ui.NewApp(cfg, *cfgPath, flag.Args())
-	app.NewWindow(lf)
-	qt.QApplication_Exec()
+	qute.Main(func() {
+		app := ui.NewApp(cfg, *cfgPath, flag.Args())
+		app.NewWindow(lf)
+	})
 	ui.FlushFrameStats()
 
 	if *memProfile != "" {

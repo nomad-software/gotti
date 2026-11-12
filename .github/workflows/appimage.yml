@@ -17,13 +17,14 @@ permissions:
 
 env:
   # The Qt that is built with and put in the AppImage. It is Qt's own build,
-  # as the Qt of Ubuntu 22.04 (6.2) is too old for the bindings. It is 6.9
-  # or later because that is the first which can give a window its icon
-  # under Wayland, where a window otherwise only has the icon of an
-  # installed desktop file. Its base already has the OpenGL and
+  # as the Qt of Ubuntu 22.04 (6.2) is far too old: the bindings, qute, are
+  # made from Qt 6.12 and use its API, so it is 6.12 or later. (6.9 was
+  # already the first which can give a window its icon under Wayland, where a
+  # window otherwise only has the icon of an installed desktop file, which an
+  # AppImage does not have.) Its base already has the OpenGL and
   # OpenGLWidgets modules termite's GL widget is built on.
-  QT_VERSION: "6.9.3"
-  QT_ROOT: /opt/qt/6.9.3/gcc_64
+  QT_VERSION: "6.12.0"
+  QT_ROOT: /opt/qt/6.12.0/gcc_64
 
 jobs:
   appimage:
@@ -35,8 +36,8 @@ jobs:
       # Besides the tools, these are the system libraries Qt's own build
       # uses, most of which go into the AppImage with it, and the OpenGL
       # headers termite's renderer is compiled against. Xvfb and Mesa's
-      # drivers (software rendering) are for starting the AppImage at the
-      # end, to check that it opens a window and draws.
+      # drivers (software rendering) are for the GUI tests, and for starting
+      # the AppImage at the end, to check that it opens a window and draws.
       - name: Install what building needs
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -102,11 +103,19 @@ jobs:
           path: /opt/go-build
           key: go-build-qt-${{ env.QT_VERSION }}-${{ hashFiles('go.sum') }}
 
-      # The emulator's tests need no display, so they run before anything
-      # is packed: a release is never made from a build that fails them.
+      # The tests run before anything is packed: a release is never made
+      # from a build that fails them. The GUI tests (internal/ui) need an X
+      # display with OpenGL, so they run in a virtual one with Mesa's
+      # software renderer; without a display they would be skipped.
       - name: Test
-        run: go test ./...
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          export XDG_CONFIG_HOME="$(mktemp -d)" XDG_DATA_HOME="$(mktemp -d)"
+          xvfb-run -a -s "-screen 0 1280x800x24" go test ./...
 
+      # The AppImage is built in a temporary folder, and only the AppImage
+      # itself is put in the root of the repository.
       - name: Build the AppImage
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}

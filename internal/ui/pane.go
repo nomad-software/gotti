@@ -7,11 +7,12 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/go-gl/gl/v3.3-core/gl"
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/desktop"
 	"termite/internal/input"
@@ -78,7 +79,7 @@ const (
 type Pane struct {
 	app    *App
 	tab    *Tab
-	Widget *qt.QWidget // container: search bar + GL view
+	Widget *qtwidgets.QWidget // container: search bar + GL view
 	GL     *qtgl.Widget
 	T      *term.Terminal
 	S      *pty.Session
@@ -90,7 +91,7 @@ type Pane struct {
 	viewTop int64 // -1: follow output
 	// scrollbar over the scrollback; its values are lines above sbBase
 	// (the oldest line kept). sbSetting is set while termite moves it.
-	scrollbar     *qt.QScrollBar
+	scrollbar     *qtwidgets.QScrollBar
 	sbBase        int64
 	sbSetting     bool
 	redrawPending atomic.Bool
@@ -112,15 +113,15 @@ type Pane struct {
 
 	// mouse reporting
 	buttonsDown int
-	pointer     qt.CursorShape // the pointer shape shown over the terminal
+	pointer     qtcore.CursorShape // the pointer shape shown over the terminal
 	lastMouse   [2]int
 	wheelAccum  float64
 
 	// search
-	searchBar   *qt.QLineEdit
+	searchBar   *qtwidgets.QLineEdit
 	searchQuery string
 
-	blinkTimer *qt.QTimer
+	blinkTimer *qtcore.QTimer
 	InGroup    bool
 	Cwd        string
 	exited     bool
@@ -129,7 +130,7 @@ type Pane struct {
 	keyTime    time.Time
 
 	// header above the terminal: current directory
-	header        *qt.QLabel
+	header        *qtwidgets.QLabel
 	headerDir     string
 	program       string // foreground program, shown in tab and window titles
 	headerPending atomic.Bool
@@ -138,38 +139,38 @@ type Pane struct {
 
 // NewPane creates a pane and starts its process.
 func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
-	p := &Pane{app: a, tab: tab, viewTop: -1, dpr: 1, command: command, pointer: qt.IBeamCursor}
+	p := &Pane{app: a, tab: tab, viewTop: -1, dpr: 1, command: command, pointer: qtcore.IBeamCursor}
 	p.view.Current = -1
 	cfg := a.cfg
 	p.T = term.New(80, 24, cfg.Scrollback)
 	a.applyTerminalSettings(p)
 
-	p.Widget = qt.NewQWidget(nil)
+	p.Widget = qtwidgets.NewQWidget(nil)
 	p.Widget.SetObjectName("termitePane")
-	lay := qt.NewQVBoxLayout(p.Widget)
-	lay.SetContentsMargins(0, 0, 0, 0)
+	lay := qtwidgets.NewQVBoxLayout(p.Widget)
+	lay.SetContentsMargins(qtcore.QMargins{})
 	lay.SetSpacing(0)
 	p.setupHeader()
-	lay.AddWidget(p.header.QWidget)
-	p.searchBar = qt.NewQLineEdit(p.Widget)
+	lay.AddWidget(p.header)
+	p.searchBar = qtwidgets.NewQLineEditWith(&searchBar{p: p}, p.Widget)
 	p.searchBar.SetObjectName("termiteSearch")
 	p.searchBar.SetPlaceholderText("Search scrollback  (Enter: older, Shift+Enter: newer, Esc: close)")
 	p.searchBar.Hide()
 	p.GL = qtgl.New(p.Widget)
-	p.GL.SetSizePolicy2(qt.QSizePolicy__Expanding, qt.QSizePolicy__Expanding)
-	p.GL.SetMinimumSize2(40, 20)
-	lay.AddWidget(p.searchBar.QWidget)
-	row := qt.NewQHBoxLayout(nil)
-	row.SetContentsMargins(0, 0, 0, 0)
+	p.GL.SetSizePolicy(qtwidgets.NewQSizePolicyWithPolicy(qtwidgets.QSizePolicyExpanding, qtwidgets.QSizePolicyExpanding))
+	p.GL.SetMinimumSize(40, 20)
+	lay.AddWidget(p.searchBar)
+	row := qtwidgets.NewQHBoxLayout(nil)
+	row.SetContentsMargins(qtcore.QMargins{})
 	row.SetSpacing(0)
-	row.AddWidget(p.GL.QWidget)
-	p.scrollbar = qt.NewQScrollBar4(qt.Vertical, p.Widget)
-	p.scrollbar.SetFocusPolicy(qt.NoFocus)
+	row.AddWidget(p.GL)
+	p.scrollbar = qtwidgets.NewQScrollBarWithOrientation(qtcore.Vertical, p.Widget)
+	p.scrollbar.SetFocusPolicy(qtcore.NoFocus)
 	p.scrollbar.SetVisible(cfg.Scrollbar)
 	p.scrollbar.OnValueChanged(p.onScrollbar)
-	row.AddWidget(p.scrollbar.QWidget)
-	lay.AddLayout(row.QLayout)
-	setCursorShape(p.GL.QWidget, qt.IBeamCursor)
+	row.AddWidget(p.scrollbar)
+	lay.AddLayout(row)
+	setCursorShape(p.GL, qtcore.IBeamCursor)
 
 	p.GL.OnInit = p.initGL
 	p.GL.OnPaint = p.paint
@@ -187,7 +188,7 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.S = s
 	p.Cwd = cwd
 	s.OnUpdate = p.onOutput
-	s.OnExit = func() { mainthread.Start(p.onExit) }
+	s.OnExit = func() { qute.Post(p.onExit) }
 	p.headerDir = cwd
 	p.scheduleHeaderRefresh()
 	s.Run()
@@ -212,7 +213,7 @@ func (p *Pane) onOutput() {
 	}
 	t.Mu.Unlock()
 	if ev&EvUI != 0 {
-		mainthread.Start(func() { p.handleEvents(ev, cwd, clips) })
+		qute.Post(func() { p.handleEvents(ev, cwd, clips) })
 	}
 	p.scheduleHeaderRefresh()
 	// Synchronized output: hold redraws until the update completes (or
@@ -246,7 +247,7 @@ func (p *Pane) requestRedraw() {
 		return
 	}
 	update := func() {
-		mainthread.Start(func() {
+		qute.Post(func() {
 			if !p.exited {
 				p.GL.Update()
 			}
@@ -271,17 +272,17 @@ func (p *Pane) handleEvents(ev term.Event, cwd string, clips []term.ClipboardWri
 		p.app.bell(p)
 	}
 	if p.app.cfg.OSC52 != "off" {
-		cb := qt.QGuiApplication_Clipboard()
+		cb := qtgui.QGuiApplicationClipboard()
 		for _, c := range clips {
 			if c.Primary {
-				cb.SetText2(c.Text, qt.QClipboard__Selection)
+				cb.SetTextFull(c.Text, qtgui.QClipboardSelection)
 			} else {
 				cb.SetText(c.Text)
 			}
 		}
 	}
 	if ev&term.EvClipboardQuery != 0 {
-		text := qt.QGuiApplication_Clipboard().Text()
+		text := qtgui.QGuiApplicationClipboard().Text()
 		p.T.Mu.Lock()
 		p.T.ReplyClipboard(text)
 		r := p.T.TakeReplies()
@@ -317,7 +318,7 @@ func (p *Pane) initGL() {
 		}
 		glInitialized = true
 	}
-	p.dpr = p.GL.DevicePixelRatioF()
+	p.dpr = p.GL.AsQPaintDevice().DevicePixelRatioF()
 	p.frameInterval = time.Second / 60
 	if hz := p.GL.Screen().RefreshRate(); hz >= 30 {
 		p.frameInterval = time.Duration(float64(time.Second) / hz)
@@ -371,7 +372,7 @@ func (p *Pane) paint() {
 	if p.R == nil {
 		return
 	}
-	if dpr := p.GL.DevicePixelRatioF(); dpr != p.dpr {
+	if dpr := p.GL.AsQPaintDevice().DevicePixelRatioF(); dpr != p.dpr {
 		// moved to a screen with a different scale factor
 		p.dpr = dpr
 		p.cache = p.app.cacheFor(dpr)
@@ -427,7 +428,7 @@ func (p *Pane) updateBlinkTimer() {
 	want := blink && p.app.cfg.CursorBlink && p.view.Focused
 	if want {
 		if p.blinkTimer == nil {
-			p.blinkTimer = qt.NewQTimer2(p.Widget.QObject)
+			p.blinkTimer = qtcore.NewQTimer(p.Widget)
 			p.blinkTimer.OnTimeout(func() {
 				p.view.BlinkOn = !p.view.BlinkOn
 				p.view.CursorDirty = true
@@ -435,7 +436,7 @@ func (p *Pane) updateBlinkTimer() {
 			})
 		}
 		if !p.blinkTimer.IsActive() {
-			p.blinkTimer.Start(530)
+			p.blinkTimer.StartWithInterval(530)
 		}
 	} else if p.blinkTimer != nil && p.blinkTimer.IsActive() {
 		p.blinkTimer.Stop()
@@ -450,39 +451,39 @@ func (p *Pane) resetBlink() {
 	if p.blinkTimer != nil && p.blinkTimer.IsActive() {
 		p.view.BlinkOn = true
 		p.view.CursorDirty = true
-		p.blinkTimer.Start(530)
+		p.blinkTimer.StartWithInterval(530)
 	}
 }
 
 // ---------------------------------------------------------------- events
 
-func (p *Pane) event(ev *qt.QEvent, raw unsafe.Pointer) bool {
+func (p *Pane) event(ev *qtcore.QEvent) bool {
 	switch ev.Type() {
-	case qt.QEvent__ShortcutOverride:
+	case qtcore.QEventShortcutOverride:
 		return true // every key goes to the terminal or our bindings
-	case qt.QEvent__KeyPress:
-		return p.keyPress(qt.UnsafeNewQKeyEvent(raw), false)
-	case qt.QEvent__KeyRelease:
-		return p.keyPress(qt.UnsafeNewQKeyEvent(raw), true)
-	case qt.QEvent__InputMethod:
-		p.inputMethod(qt.UnsafeNewQInputMethodEvent(raw))
+	case qtcore.QEventKeyPress:
+		return p.keyPress(qtgui.QKeyEventCast(ev), false)
+	case qtcore.QEventKeyRelease:
+		return p.keyPress(qtgui.QKeyEventCast(ev), true)
+	case qtcore.QEventInputMethod:
+		p.inputMethod(qtgui.QInputMethodEventCast(ev))
 		return true
-	case qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonDblClick:
-		p.mousePress(qt.UnsafeNewQMouseEvent(raw))
+	case qtcore.QEventMouseButtonPress, qtcore.QEventMouseButtonDblClick:
+		p.mousePress(qtgui.QMouseEventCast(ev))
 		return true
-	case qt.QEvent__MouseButtonRelease:
-		p.mouseRelease(qt.UnsafeNewQMouseEvent(raw))
+	case qtcore.QEventMouseButtonRelease:
+		p.mouseRelease(qtgui.QMouseEventCast(ev))
 		return true
-	case qt.QEvent__MouseMove:
-		p.mouseMove(qt.UnsafeNewQMouseEvent(raw))
+	case qtcore.QEventMouseMove:
+		p.mouseMove(qtgui.QMouseEventCast(ev))
 		return true
-	case qt.QEvent__Wheel:
-		p.wheel(qt.UnsafeNewQWheelEvent(raw))
+	case qtcore.QEventWheel:
+		p.wheel(qtgui.QWheelEventCast(ev))
 		return true
-	case qt.QEvent__FocusIn:
+	case qtcore.QEventFocusIn:
 		p.focus(true)
 		return false
-	case qt.QEvent__FocusOut:
+	case qtcore.QEventFocusOut:
 		p.focus(false)
 		return false
 	}
@@ -517,7 +518,7 @@ func (p *Pane) modes() input.Modes {
 	return input.Modes{AppCursor: p.T.AppCursor, AppKeypad: p.T.AppKeypad, KittyFlags: p.T.KittyFlags()}
 }
 
-func (p *Pane) keyPress(qe *qt.QKeyEvent, release bool) bool {
+func (p *Pane) keyPress(qe *qtgui.QKeyEvent, release bool) bool {
 	ev := translateKey(qe, release)
 	if chord, ok := chordOf(ev); ok {
 		if action, ok := p.app.bindings[chord]; ok {
@@ -548,7 +549,7 @@ func (p *Pane) sendInput(data []byte) {
 	p.resetBlink()
 }
 
-func (p *Pane) inputMethod(e *qt.QInputMethodEvent) {
+func (p *Pane) inputMethod(e *qtgui.QInputMethodEvent) {
 	if s := e.CommitString(); s != "" {
 		p.sendInput([]byte(s))
 	}
@@ -583,8 +584,8 @@ func (p *Pane) topAbs() int64 {
 	return p.T.Buf().ScreenTopAbs()
 }
 
-func (p *Pane) mouseReporting(mods qt.KeyboardModifier) bool {
-	if mods&qt.ShiftModifier != 0 {
+func (p *Pane) mouseReporting(mods qtcore.KeyboardModifier) bool {
+	if mods&qtcore.ShiftModifier != 0 {
 		return false // shift overrides application mouse mode
 	}
 	p.T.Mu.Lock()
@@ -592,21 +593,21 @@ func (p *Pane) mouseReporting(mods qt.KeyboardModifier) bool {
 	return p.T.MouseMode != term.MouseOff
 }
 
-func mouseButton(b qt.MouseButton) int {
+func mouseButton(b qtcore.MouseButton) int {
 	switch b {
-	case qt.LeftButton:
+	case qtcore.LeftButton:
 		return input.MouseLeft
-	case qt.MiddleButton:
+	case qtcore.MiddleButton:
 		return input.MouseMiddle
-	case qt.RightButton:
+	case qtcore.RightButton:
 		return input.MouseRight
 	}
 	return -1
 }
 
-func (p *Pane) mousePress(e *qt.QMouseEvent) {
+func (p *Pane) mousePress(e *qtgui.QMouseEvent) {
 	pos := e.Position()
-	col, row, _ := p.cellAt(pos.X(), pos.Y())
+	col, row, _ := p.cellAt(pos.X, pos.Y)
 	mods := e.Modifiers()
 	btn := mouseButton(e.Button())
 	p.GL.SetFocus()
@@ -623,7 +624,7 @@ func (p *Pane) mousePress(e *qt.QMouseEvent) {
 	at := term.Pos{Line: abs, Col: col}
 	switch btn {
 	case input.MouseLeft:
-		if mods&qt.ControlModifier != 0 {
+		if mods&qtcore.ControlModifier != 0 {
 			if url := p.linkAt(at); url != "" {
 				openURL(url)
 				return
@@ -638,7 +639,7 @@ func (p *Pane) mousePress(e *qt.QMouseEvent) {
 		p.lastClick, p.lastClickAt = now, at
 		p.selecting = true
 		p.selMode = [...]int{selChar, selChar, selWord, selLine}[p.clickCount]
-		p.view.Sel = render.Selection{Block: mods&qt.AltModifier != 0}
+		p.view.Sel = render.Selection{Block: mods&qtcore.AltModifier != 0}
 		p.selAnchor, p.selAnchorE = at, term.Pos{Line: abs, Col: col + 1}
 		if p.selMode != selChar {
 			p.T.Mu.Lock()
@@ -653,17 +654,17 @@ func (p *Pane) mousePress(e *qt.QMouseEvent) {
 		}
 		p.invalidate()
 	case input.MouseMiddle:
-		text := qt.QGuiApplication_Clipboard().TextWithMode(qt.QClipboard__Selection)
+		text := qtgui.QGuiApplicationClipboard().TextFull(qtgui.QClipboardSelection)
 		p.paste(text)
 	case input.MouseRight:
 		g := e.GlobalPosition()
-		p.showContextMenu(int(g.X()), int(g.Y()), &at)
+		p.showContextMenu(int(g.X), int(g.Y), &at)
 	}
 }
 
-func (p *Pane) mouseMove(e *qt.QMouseEvent) {
+func (p *Pane) mouseMove(e *qtgui.QMouseEvent) {
 	pos := e.Position()
-	col, row, _ := p.cellAt(pos.X(), pos.Y())
+	col, row, _ := p.cellAt(pos.X, pos.Y)
 	mods := e.Modifiers()
 	if p.mouseReporting(mods) {
 		p.T.Mu.Lock()
@@ -689,7 +690,7 @@ func (p *Pane) mouseMove(e *qt.QMouseEvent) {
 		return
 	}
 	// hover links with Ctrl held
-	if mods&qt.ControlModifier != 0 {
+	if mods&qtcore.ControlModifier != 0 {
 		p.updateHover(term.Pos{Line: p.topAbs() + int64(row), Col: col})
 	} else if p.view.HoverActive {
 		p.view.HoverActive = false
@@ -700,13 +701,13 @@ func (p *Pane) mouseMove(e *qt.QMouseEvent) {
 		return
 	}
 	// auto-scroll while dragging outside the view
-	if pos.Y() < 0 {
+	if pos.Y < 0 {
 		p.scrollBy(-1)
-	} else if pos.Y() > float64(p.GL.Height()) {
+	} else if pos.Y > float64(p.GL.Height()) {
 		p.scrollBy(1)
 	}
 	at := term.Pos{Line: p.topAbs() + int64(row), Col: col}
-	p.extendSelection(at, e.Modifiers()&qt.AltModifier != 0)
+	p.extendSelection(at, e.Modifiers()&qtcore.AltModifier != 0)
 }
 
 func (p *Pane) extendSelection(at term.Pos, block bool) {
@@ -751,9 +752,9 @@ func (p *Pane) extendSelection(at term.Pos, block bool) {
 	}
 }
 
-func (p *Pane) mouseRelease(e *qt.QMouseEvent) {
+func (p *Pane) mouseRelease(e *qtgui.QMouseEvent) {
 	pos := e.Position()
-	col, row, _ := p.cellAt(pos.X(), pos.Y())
+	col, row, _ := p.cellAt(pos.X, pos.Y)
 	btn := mouseButton(e.Button())
 	if btn >= 0 && p.buttonsDown&(1<<btn) != 0 {
 		p.buttonsDown &^= 1 << btn
@@ -765,8 +766,8 @@ func (p *Pane) mouseRelease(e *qt.QMouseEvent) {
 		if p.view.Sel.Active {
 			text := p.selectionText()
 			if text != "" {
-				cb := qt.QGuiApplication_Clipboard()
-				cb.SetText2(text, qt.QClipboard__Selection)
+				cb := qtgui.QGuiApplicationClipboard()
+				cb.SetTextFull(text, qtgui.QClipboardSelection)
 				if p.app.cfg.CopyOnSelect {
 					cb.SetText(text)
 				}
@@ -792,15 +793,15 @@ func (p *Pane) clearSelection() {
 	}
 }
 
-func (p *Pane) wheel(e *qt.QWheelEvent) {
+func (p *Pane) wheel(e *qtgui.QWheelEvent) {
 	pos := e.Position()
-	col, row, _ := p.cellAt(pos.X(), pos.Y())
+	col, row, _ := p.cellAt(pos.X, pos.Y)
 	_, ch := p.R.CellSize()
 	var lines float64
-	if e.HasPixelDelta() && e.PixelDelta().Y() != 0 {
-		p.wheelAccum += float64(e.PixelDelta().Y()) * p.dpr / float64(ch)
+	if e.HasPixelDelta() && e.PixelDelta().Y != 0 {
+		p.wheelAccum += float64(e.PixelDelta().Y) * p.dpr / float64(ch)
 	} else {
-		p.wheelAccum += float64(e.AngleDelta().Y()) / 120 * 3
+		p.wheelAccum += float64(e.AngleDelta().Y) / 120 * 3
 	}
 	lines = math.Trunc(p.wheelAccum)
 	p.wheelAccum -= lines
@@ -817,7 +818,7 @@ func (p *Pane) wheel(e *qt.QWheelEvent) {
 	appCursor := p.T.AppCursor
 	p.T.Mu.Unlock()
 	switch {
-	case reporting && mods&qt.ShiftModifier == 0:
+	case reporting && mods&qtcore.ShiftModifier == 0:
 		btn := input.MouseWheelDown
 		if up {
 			btn = input.MouseWheelUp
@@ -845,15 +846,15 @@ func (p *Pane) wheel(e *qt.QWheelEvent) {
 }
 
 func (p *Pane) updatePointer(link bool) {
-	shape := qt.IBeamCursor
+	shape := qtcore.IBeamCursor
 	if link {
-		shape = qt.PointingHandCursor
+		shape = qtcore.PointingHandCursor
 	} else if p.mouseReporting(0) {
-		shape = qt.ArrowCursor
+		shape = qtcore.ArrowCursor
 	}
 	if shape != p.pointer {
 		p.pointer = shape
-		setCursorShape(p.GL.QWidget, shape)
+		setCursorShape(p.GL, shape)
 	}
 }
 
@@ -982,7 +983,7 @@ func (p *Pane) paste(text string) {
 	if input.IsMultiLine(text) && (warn == "always" || warn == "unbracketed" && !bracketed) {
 		lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
 		msg := fmt.Sprintf("You are pasting %d lines. They may run as commands.\n\nPaste anyway?", lines)
-		ok := qt.QMessageBox_Question(p.Widget, "Multi-line Paste", msg) == qt.QMessageBox__Yes
+		ok := qtwidgets.QMessageBoxQuestion(p.Widget, "Multi-line Paste", msg) == qtwidgets.QMessageBoxYes
 		p.refocus()
 		if !ok {
 			return
@@ -999,20 +1000,29 @@ func (p *Pane) setupSearch() {
 		p.searchQuery = s
 		p.runSearch(true)
 	})
-	sb.OnKeyPressEvent(func(super func(*qt.QKeyEvent), ev *qt.QKeyEvent) {
-		switch qt.Key(ev.Key()) {
-		case qt.Key_Escape:
-			p.closeSearch()
-		case qt.Key_Return, qt.Key_Enter:
-			if ev.Modifiers()&qt.ShiftModifier != 0 {
-				p.searchStep(1)
-			} else {
-				p.searchStep(-1)
-			}
-		default:
-			super(ev)
+}
+
+// searchBar is the search field's QLineEdit: Escape closes it, and Enter
+// and Shift+Enter step through the matches.
+type searchBar struct {
+	qtwidgets.QLineEditBase
+	p *Pane
+}
+
+// KeyPressEvent overrides QWidget::keyPressEvent.
+func (s *searchBar) KeyPressEvent(ev *qtgui.QKeyEvent) {
+	switch qtcore.Key(ev.Key()) {
+	case qtcore.Key_Escape:
+		s.p.closeSearch()
+	case qtcore.Key_Return, qtcore.Key_Enter:
+		if ev.Modifiers()&qtcore.ShiftModifier != 0 {
+			s.p.searchStep(1)
+		} else {
+			s.p.searchStep(-1)
 		}
-	})
+	default:
+		s.Super().KeyPressEvent(ev)
+	}
 }
 
 func (p *Pane) openSearch() {
@@ -1043,9 +1053,9 @@ func (p *Pane) runSearch(jump bool) {
 	if len(matches) == 0 {
 		p.view.Current = -1
 	}
-	setBoolProperty(p.searchBar.QWidget, "notFound", len(matches) == 0 && q != "")
-	p.searchBar.Style().Unpolish(p.searchBar.QWidget)
-	p.searchBar.Style().Polish(p.searchBar.QWidget)
+	setBoolProperty(p.searchBar, "notFound", len(matches) == 0 && q != "")
+	p.searchBar.Style().Unpolish(p.searchBar)
+	p.searchBar.Style().Polish(p.searchBar)
 	if jump {
 		p.revealMatch()
 	}

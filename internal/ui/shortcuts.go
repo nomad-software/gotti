@@ -5,7 +5,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 )
@@ -149,45 +150,45 @@ func chordText(s, super string) string {
 
 // shortcutsTab builds the options dialog's keyboard shortcut page. read
 // returns the bindings as edited, with any actions that share a key.
-func (a *App) shortcutsTab() (page *qt.QWidget, read func() (map[string]string, []string)) {
-	page = qt.NewQWidget(nil)
-	outer := qt.NewQVBoxLayout(page)
+func (a *App) shortcutsTab() (page *qtwidgets.QWidget, read func() (map[string]string, []string)) {
+	page = qtwidgets.NewQWidget(nil)
+	outer := qtwidgets.NewQVBoxLayout(page)
 	box, sf := optionsSection(outer, "Shortcuts", "Click a shortcut and press the new keys. Clear it to leave the action unbound.")
 
-	scroll := qt.NewQScrollArea(page)
+	scroll := qtwidgets.NewQScrollArea(page)
 	scroll.SetWidgetResizable(true)
-	inner := qt.NewQWidget(nil)
-	form := qt.NewQFormLayout(inner)
-	edits := make([]*qt.QKeySequenceEdit, len(shortcutActions))
+	inner := qtwidgets.NewQWidget(nil)
+	form := qtwidgets.NewQFormLayout(inner)
+	edits := make([]*qtwidgets.QKeySequenceEdit, len(shortcutActions))
 	for i, sa := range shortcutActions {
-		e := qt.NewQKeySequenceEdit(inner)
+		e := qtwidgets.NewQKeySequenceEdit(inner)
 		e.SetClearButtonEnabled(true)
 		setKeySequence(e, chordToQt(a.cfg.Keybindings[sa.action]))
 		// One chord per action: drop anything typed after the first.
-		e.OnKeySequenceChanged(func(ks *qt.QKeySequence) {
+		e.OnKeySequenceChanged(func(ks *qtgui.QKeySequence) {
 			if ks.Count() > 1 {
 				first, _, _ := strings.Cut(ks.ToString(), ", ")
 				setKeySequence(e, first)
 			}
 		})
 		edits[i] = e
-		form.AddRow3(sa.label+":", e.QWidget)
+		form.AddRowText(sa.label+":", e)
 	}
 	scroll.SetWidget(inner)
-	sf.AddRowWithWidget(scroll.QWidget)
+	sf.AddRowWidget(scroll)
 
-	defaults := qt.NewQPushButton3("Restore Defaults")
-	defaults.OnClicked(func() {
+	defaults := qtwidgets.NewQPushButtonWithText("Restore Defaults", nil)
+	defaults.OnClicked(func(bool) {
 		for i, sa := range shortcutActions {
 			setKeySequence(edits[i], chordToQt(config.DefaultKeybindings[sa.action]))
 		}
 	})
-	row := qt.NewQHBoxLayout(nil)
+	row := qtwidgets.NewQHBoxLayout(nil)
 	row.AddStretch()
-	row.AddWidget(defaults.QWidget)
-	sf.AddRowWithLayout(row.QLayout)
+	row.AddWidget(defaults)
+	sf.AddRowSpanLayout(row)
 	// The list takes what room the page has.
-	outer.SetStretchFactor(box.QWidget, 1)
+	outer.SetStretchFactor(box, 1)
 
 	read = func() (map[string]string, []string) {
 		out := map[string]string{}

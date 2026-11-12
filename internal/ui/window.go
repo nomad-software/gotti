@@ -3,10 +3,13 @@ package ui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 	"termite/internal/desktop"
@@ -15,14 +18,14 @@ import (
 // Window is a top-level window with tabs.
 type Window struct {
 	app  *App
-	w    *qt.QWidget
-	tabs *qt.QTabWidget
+	w    *qtwidgets.QWidget
+	tabs *qtwidgets.QTabWidget
 	list []*Tab
 }
 
 func newWindow(a *App) *Window {
 	w := &Window{app: a}
-	w.w = qt.NewQWidget(nil)
+	w.w = qtwidgets.NewQWidgetWith(&windowWidget{win: w}, nil)
 	w.w.SetObjectName("termiteWindow")
 	w.w.SetWindowTitle("")
 	w.w.SetWindowIcon(AppIcon())
@@ -31,18 +34,18 @@ func newWindow(a *App) *Window {
 		width, height = 900, 560
 	}
 	w.w.Resize(width, height)
-	lay := qt.NewQVBoxLayout(w.w)
-	lay.SetContentsMargins(0, 0, 0, 0)
-	w.tabs = qt.NewQTabWidget(w.w)
+	lay := qtwidgets.NewQVBoxLayout(w.w)
+	lay.SetContentsMargins(qtcore.QMargins{})
+	w.tabs = qtwidgets.NewQTabWidget(w.w)
 	w.tabs.SetObjectName("termiteTabs")
 	w.tabs.TabBar().SetObjectName("termiteTabBar")
 	w.tabs.SetMovable(true)
 	w.tabs.SetTabsClosable(true)
 	w.tabs.SetDocumentMode(true)
 	w.tabs.SetTabBarAutoHide(true)
-	w.tabs.SetFocusPolicy(qt.NoFocus)
-	w.tabs.TabBar().SetFocusPolicy(qt.NoFocus)
-	lay.AddWidget(w.tabs.QWidget)
+	w.tabs.SetFocusPolicy(qtcore.NoFocus)
+	w.tabs.TabBar().SetFocusPolicy(qtcore.NoFocus)
+	lay.AddWidget(w.tabs)
 	w.tabs.OnTabCloseRequested(func(i int) {
 		if t := w.tabAt(i); t != nil {
 			for _, p := range t.Panes() {
@@ -56,18 +59,27 @@ func newWindow(a *App) *Window {
 		}
 		w.updateTitles()
 	})
-	w.w.OnCloseEvent(func(super func(*qt.QCloseEvent), ev *qt.QCloseEvent) {
-		w.saveGeometry()
-		for _, p := range w.allPanes() {
-			p.exited = true
-			p.releaseGL()
-			p.S.Close()
-		}
-		super(ev)
-		w.app.windowClosed(w)
-	})
 	w.applyTheme()
 	return w
+}
+
+// windowWidget is the top-level QWidget of a Window.
+type windowWidget struct {
+	qtwidgets.QWidgetBase
+	win *Window
+}
+
+// CloseEvent overrides QWidget::closeEvent: the window's panes end with it.
+func (ww *windowWidget) CloseEvent(ev *qtgui.QCloseEvent) {
+	w := ww.win
+	w.saveGeometry()
+	for _, p := range w.allPanes() {
+		p.exited = true
+		p.releaseGL()
+		p.S.Close()
+	}
+	ww.Super().CloseEvent(ev)
+	w.app.windowClosed(w)
 }
 
 // headerFontScale sizes the pane header font relative to the terminal's.
@@ -112,7 +124,7 @@ func (w *Window) tabAt(i int) *Tab {
 	}
 	wd := w.tabs.Widget(i)
 	for _, t := range w.list {
-		if t.container.UnsafePointer() == wd.UnsafePointer() {
+		if t.container.Ptr() == wd.Ptr() {
 			return t
 		}
 	}
@@ -126,7 +138,7 @@ func (w *Window) NewTab(cwd string, cmd []string) *Tab {
 	t := newTab(w)
 	p, err := w.app.NewPane(t, cwd, cmd)
 	if err != nil {
-		qt.QMessageBox_Warning(w.w, desktop.DisplayName, err.Error())
+		qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 		return nil
 	}
 	t.setRoot(&Node{pane: p})
@@ -194,6 +206,9 @@ func (w *Window) removeTab(t *Tab) {
 }
 
 func (w *Window) updateTitles() {
+	if cur := w.tabAt(w.tabs.CurrentIndex()); cur != nil && cur.focused != nil {
+		w.w.SetWindowTitle(windowTitle(cur.focused))
+	}
 	for _, t := range w.list {
 		p := t.focused
 		if p == nil {
@@ -207,6 +222,24 @@ func (w *Window) updateTitles() {
 		i := w.indexOf(t)
 		w.tabs.SetTabText(i, short)
 		w.tabs.SetTabToolTip(i, title)
+	}
+}
+
+// windowTitle is the title of a window whose current pane is p: the last
+// element of the directory its header shows, or of its shell's directory
+// until the header has one.
+func windowTitle(p *Pane) string {
+	dir := p.headerDir
+	if dir == "" {
+		dir = p.cwd()
+	}
+	switch dir {
+	case "":
+		return p.tabTitle()
+	case "/":
+		return dir
+	default:
+		return filepath.Base(dir)
 	}
 }
 
@@ -227,7 +260,7 @@ func (w *Window) moveTab(d int) {
 }
 
 func paneRect(p *Pane) rect {
-	x, y := mapToGlobal(p.GL.QWidget, 0, 0)
+	x, y := mapToGlobal(p.GL, 0, 0)
 	return rect{float64(x), float64(y), float64(p.GL.Width()), float64(p.GL.Height())}
 }
 
@@ -275,7 +308,7 @@ func (w *Window) saveGeometry() {
 	width, height := w.w.Width(), w.w.Height()
 	if maximized {
 		g := w.w.NormalGeometry()
-		width, height = g.Width(), g.Height()
+		width, height = g.Width, g.Height
 	}
 	if width < 200 || height < 100 {
 		return

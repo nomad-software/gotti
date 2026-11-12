@@ -3,25 +3,26 @@ package ui
 import (
 	"unicode"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
 
 	"termite/internal/config"
 	"termite/internal/input"
 )
 
-var qtKeys = map[qt.Key]input.Key{
-	qt.Key_Escape: input.KeyEscape, qt.Key_Tab: input.KeyTab, qt.Key_Backtab: input.KeyTab,
-	qt.Key_Backspace: input.KeyBackspace, qt.Key_Return: input.KeyEnter, qt.Key_Enter: input.KeyEnter,
-	qt.Key_Insert: input.KeyInsert, qt.Key_Delete: input.KeyDelete, qt.Key_Home: input.KeyHome,
-	qt.Key_End: input.KeyEnd, qt.Key_Left: input.KeyLeft, qt.Key_Up: input.KeyUp,
-	qt.Key_Right: input.KeyRight, qt.Key_Down: input.KeyDown, qt.Key_PageUp: input.KeyPageUp,
-	qt.Key_PageDown: input.KeyPageDown,
-	qt.Key_F1:       input.KeyF1, qt.Key_F2: input.KeyF2, qt.Key_F3: input.KeyF3, qt.Key_F4: input.KeyF4,
-	qt.Key_F5: input.KeyF5, qt.Key_F6: input.KeyF6, qt.Key_F7: input.KeyF7, qt.Key_F8: input.KeyF8,
-	qt.Key_F9: input.KeyF9, qt.Key_F10: input.KeyF10, qt.Key_F11: input.KeyF11, qt.Key_F12: input.KeyF12,
-	qt.Key_Shift: input.KeyShift, qt.Key_Control: input.KeyControl, qt.Key_Alt: input.KeyAlt,
-	qt.Key_Meta: input.KeySuper, qt.Key_Super_L: input.KeySuper, qt.Key_Super_R: input.KeySuper,
-	qt.Key_CapsLock: input.KeyCapsLock, qt.Key_Menu: input.KeyMenu,
+var qtKeys = map[qtcore.Key]input.Key{
+	qtcore.Key_Escape: input.KeyEscape, qtcore.Key_Tab: input.KeyTab, qtcore.Key_Backtab: input.KeyTab,
+	qtcore.Key_Backspace: input.KeyBackspace, qtcore.Key_Return: input.KeyEnter, qtcore.Key_Enter: input.KeyEnter,
+	qtcore.Key_Insert: input.KeyInsert, qtcore.Key_Delete: input.KeyDelete, qtcore.Key_Home: input.KeyHome,
+	qtcore.Key_End: input.KeyEnd, qtcore.Key_Left: input.KeyLeft, qtcore.Key_Up: input.KeyUp,
+	qtcore.Key_Right: input.KeyRight, qtcore.Key_Down: input.KeyDown, qtcore.Key_PageUp: input.KeyPageUp,
+	qtcore.Key_PageDown: input.KeyPageDown,
+	qtcore.Key_F1:       input.KeyF1, qtcore.Key_F2: input.KeyF2, qtcore.Key_F3: input.KeyF3, qtcore.Key_F4: input.KeyF4,
+	qtcore.Key_F5: input.KeyF5, qtcore.Key_F6: input.KeyF6, qtcore.Key_F7: input.KeyF7, qtcore.Key_F8: input.KeyF8,
+	qtcore.Key_F9: input.KeyF9, qtcore.Key_F10: input.KeyF10, qtcore.Key_F11: input.KeyF11, qtcore.Key_F12: input.KeyF12,
+	qtcore.Key_Shift: input.KeyShift, qtcore.Key_Control: input.KeyControl, qtcore.Key_Alt: input.KeyAlt,
+	qtcore.Key_Meta: input.KeySuper, qtcore.Key_Super_L: input.KeySuper, qtcore.Key_Super_R: input.KeySuper,
+	qtcore.Key_CapsLock: input.KeyCapsLock, qtcore.Key_Menu: input.KeyMenu,
 }
 
 var keyNames = map[input.Key]string{
@@ -46,28 +47,28 @@ var unshift = map[rune]rune{
 	'_': '-', '+': '=', '{': '[', '}': ']', '|': '\\', ':': ';', '"': '\'', '<': ',', '>': '.', '?': '/', '~': '`',
 }
 
-func qtMods(m qt.KeyboardModifier) input.Mods {
+func qtMods(m qtcore.KeyboardModifier) input.Mods {
 	var out input.Mods
-	if m&qt.ShiftModifier != 0 {
+	if m&qtcore.ShiftModifier != 0 {
 		out |= input.Shift
 	}
-	if m&qt.ControlModifier != 0 {
+	if m&qtcore.ControlModifier != 0 {
 		out |= input.Ctrl
 	}
-	if m&qt.AltModifier != 0 {
+	if m&qtcore.AltModifier != 0 {
 		out |= input.Alt
 	}
-	if m&qt.MetaModifier != 0 {
+	if m&qtcore.MetaModifier != 0 {
 		out |= input.Super
 	}
 	return out
 }
 
 // translateKey converts a Qt key event to the toolkit-neutral form.
-func translateKey(ev *qt.QKeyEvent, release bool) input.KeyEvent {
-	k := qt.Key(ev.Key())
+func translateKey(ev *qtgui.QKeyEvent, release bool) input.KeyEvent {
+	k := qtcore.Key(ev.Key())
 	mods := ev.Modifiers()
-	out := input.KeyEvent{Mods: qtMods(mods), Action: input.Press, Keypad: mods&qt.KeypadModifier != 0}
+	out := input.KeyEvent{Mods: qtMods(mods), Action: input.Press, Keypad: mods&qtcore.KeypadModifier != 0}
 	if release {
 		out.Action = input.Release
 	} else if ev.IsAutoRepeat() {
@@ -75,7 +76,7 @@ func translateKey(ev *qt.QKeyEvent, release bool) input.KeyEvent {
 	}
 	if ik, ok := qtKeys[k]; ok {
 		out.Key = ik
-		if k == qt.Key_Backtab {
+		if k == qtcore.Key_Backtab {
 			out.Mods |= input.Shift
 		}
 		return out

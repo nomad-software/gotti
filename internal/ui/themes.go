@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
 )
@@ -44,74 +44,74 @@ func swatchStyle(c uint32) string {
 // themesTab builds the options dialog's Colours page: a list of themes to
 // choose from, with an editor for the selected one. read returns the
 // edited themes and the id of the selected theme.
-func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[string]config.ThemeSpec, string)) {
+func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read func() (map[string]config.ThemeSpec, string)) {
 	specs := config.CloneThemes(a.cfg.Themes)
 	ids := a.cfg.ThemeIDs()
 	current := -1
 	loading := false
 
-	page = qt.NewQWidget(nil)
-	outer := qt.NewQHBoxLayout(page)
+	page = qtwidgets.NewQWidget(nil)
+	outer := qtwidgets.NewQHBoxLayout(page)
 
 	// ---- left: the list and its buttons
-	left := qt.NewQVBoxLayout(nil)
+	left := qtwidgets.NewQVBoxLayout(nil)
 	_, lf := optionsSection(left, "Themes", "The selected theme is used when you press OK or Apply.")
-	list := qt.NewQListWidget(page)
+	list := qtwidgets.NewQListWidget(page)
 	list.SetMinimumWidth(170)
-	lf.AddRowWithWidget(list.QWidget)
-	addBtn := qt.NewQPushButton3("Add")
-	dupBtn := qt.NewQPushButton3("Duplicate")
-	removeBtn := qt.NewQPushButton3("Remove")
-	row := qt.NewQHBoxLayout(nil)
-	row.AddWidget(addBtn.QWidget)
-	row.AddWidget(dupBtn.QWidget)
-	row.AddWidget(removeBtn.QWidget)
-	lf.AddRowWithLayout(row.QLayout)
-	restoreBtn := qt.NewQPushButton3("Restore Built-in Themes")
-	lf.AddRowWithWidget(restoreBtn.QWidget)
-	outer.AddLayout2(left.QLayout, 0)
+	lf.AddRowWidget(list)
+	addBtn := qtwidgets.NewQPushButtonWithText("Add", nil)
+	dupBtn := qtwidgets.NewQPushButtonWithText("Duplicate", nil)
+	removeBtn := qtwidgets.NewQPushButtonWithText("Remove", nil)
+	row := qtwidgets.NewQHBoxLayout(nil)
+	row.AddWidget(addBtn)
+	row.AddWidget(dupBtn)
+	row.AddWidget(removeBtn)
+	lf.AddRowSpanLayout(row)
+	restoreBtn := qtwidgets.NewQPushButtonWithText("Restore Built-in Themes", nil)
+	lf.AddRowWidget(restoreBtn)
+	outer.AddLayoutFull(left, 0)
 
 	// ---- right: the editor
-	right := qt.NewQVBoxLayout(nil)
+	right := qtwidgets.NewQVBoxLayout(nil)
 	_, form := optionsSection(right, "Terminal", "")
-	name := qt.NewQLineEdit(page)
-	form.AddRow3("Name:", name.QWidget)
-	colorBtns := make([]*qt.QPushButton, len(themeColorFields))
+	name := qtwidgets.NewQLineEdit(page)
+	form.AddRowText("Name:", name)
+	colorBtns := make([]*qtwidgets.QPushButton, len(themeColorFields))
 	for i, f := range themeColorFields {
-		b := qt.NewQPushButton(page)
+		b := qtwidgets.NewQPushButton(page)
 		b.SetMinimumWidth(110)
 		colorBtns[i] = b
 		if !f.header {
-			form.AddRow3(f.label+":", b.QWidget)
+			form.AddRowText(f.label+":", b)
 		}
 	}
 
 	_, hf := optionsSection(right, "Pane header", "")
 	for i, f := range themeColorFields {
 		if f.header {
-			hf.AddRow3(f.label+":", colorBtns[i].QWidget)
+			hf.AddRowText(f.label+":", colorBtns[i])
 		}
 	}
 
-	palBox := qt.NewQGroupBox3("Palette")
-	grid := qt.NewQGridLayout(palBox.QWidget)
-	grid.AddWidget2(qt.NewQLabel3("Normal").QWidget, 0, 0)
-	grid.AddWidget2(qt.NewQLabel3("Bright").QWidget, 1, 0)
-	palBtns := make([]*qt.QPushButton, 16)
+	palBox := qtwidgets.NewQGroupBoxWithTitle("Palette", nil)
+	grid := qtwidgets.NewQGridLayout(palBox)
+	grid.AddWidget(qtwidgets.NewQLabelWithText("Normal", nil), 0, 0)
+	grid.AddWidget(qtwidgets.NewQLabelWithText("Bright", nil), 1, 0)
+	palBtns := make([]*qtwidgets.QPushButton, 16)
 	for i := range palBtns {
-		b := qt.NewQPushButton(palBox.QWidget)
-		b.SetFixedSize2(30, 24)
+		b := qtwidgets.NewQPushButton(palBox)
+		b.SetFixedSize(30, 24)
 		label := paletteNames[i%8]
 		if i >= 8 {
 			label = "Bright " + strings.ToLower(label)
 		}
 		b.SetAccessibleName(label)
 		palBtns[i] = b
-		grid.AddWidget2(b.QWidget, i/8, 1+i%8)
+		grid.AddWidget(b, i/8, 1+i%8)
 	}
-	right.AddWidget(palBox.QWidget)
+	right.AddWidget(palBox)
 	right.AddStretch()
-	outer.AddLayout2(right.QLayout, 1)
+	outer.AddLayoutFull(right, 1)
 
 	cur := func() *config.ThemeSpec {
 		if current < 0 || current >= len(ids) {
@@ -158,7 +158,7 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		list.Clear()
 		sel := 0
 		for i, id := range ids {
-			list.AddItem(specs[id].Name)
+			list.AddItemText(specs[id].Name)
 			if id == selectID {
 				sel = i
 			}
@@ -182,17 +182,14 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		list.Item(current).SetText(text)
 	})
 	pick := func(title string, initial uint32, set func(string)) {
-		init := qt.NewQColor6(config.HexColor(initial))
-		// GetColor returns a copy that miqt frees itself.
-		c := qt.QColorDialog_GetColor3(init, dlg.QWidget, title)
-		init.Delete()
+		c := qtwidgets.QColorDialogGetColorFull(mustColor(config.HexColor(initial)), dlg, title, 0)
 		if c.IsValid() {
 			set(c.Name())
 			refresh()
 		}
 	}
 	for i, f := range themeColorFields {
-		colorBtns[i].OnClicked(func() {
+		colorBtns[i].OnClicked(func(bool) {
 			s := cur()
 			if s == nil {
 				return
@@ -206,7 +203,7 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		})
 	}
 	for i, b := range palBtns {
-		b.OnClicked(func() {
+		b.OnClicked(func(bool) {
 			s := cur()
 			if s == nil {
 				return
@@ -243,13 +240,13 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		name.SetFocus()
 		name.SelectAll()
 	}
-	addBtn.OnClicked(func() { addCopy("New Theme") })
-	dupBtn.OnClicked(func() {
+	addBtn.OnClicked(func(bool) { addCopy("New Theme") })
+	dupBtn.OnClicked(func(bool) {
 		if s := cur(); s != nil {
 			addCopy(s.Name + " Copy")
 		}
 	})
-	removeBtn.OnClicked(func() {
+	removeBtn.OnClicked(func(bool) {
 		if len(ids) <= 1 || cur() == nil {
 			return // at least one theme must remain
 		}
@@ -258,9 +255,9 @@ func (a *App) themesTab(dlg *qt.QDialog) (page *qt.QWidget, read func() (map[str
 		next := min(current, len(ids)-1)
 		rebuildList(ids[next])
 	})
-	restoreBtn.OnClicked(func() {
+	restoreBtn.OnClicked(func(bool) {
 		msg := "Restore the built-in themes? Changes made to them will be lost; your own themes are kept."
-		if qt.QMessageBox_Question(dlg.QWidget, "Restore Built-in Themes", msg) != qt.QMessageBox__Yes {
+		if qtwidgets.QMessageBoxQuestion(dlg, "Restore Built-in Themes", msg) != qtwidgets.QMessageBoxYes {
 			return
 		}
 		selected := ""
