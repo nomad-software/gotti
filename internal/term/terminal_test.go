@@ -476,3 +476,53 @@ func TestSGRReportRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// Clear Scrollback acts on the primary screen's scrollback also while a
+// full-screen program has the alternate screen up.
+func TestClearScrollbackFromAltScreen(t *testing.T) {
+	term := New(10, 2, 50)
+	for i := range 10 {
+		feed(term, fmt.Sprintf("line%d\r\n", i))
+	}
+	if term.primary.ScrollbackLen() == 0 {
+		t.Fatal("no scrollback to clear")
+	}
+	feed(term, "\x1b[?1049h")
+	term.ClearScrollback()
+	feed(term, "\x1b[?1049l")
+	if n := term.primary.ScrollbackLen(); n != 0 {
+		t.Fatalf("%d scrollback lines left", n)
+	}
+	expectScreen(t, term, "line9", "")
+}
+
+// DECALN fills the screen with lines of its own: none stays soft-wrapped
+// into the next, so a resize keeps the rows of E as they were.
+func TestDECALNClearsWraps(t *testing.T) {
+	term := feed(newT(4, 3), "abcdefghij\x1b#8")
+	for y := range 3 {
+		if term.buf.RowWrapped(y) {
+			t.Fatalf("row %d is still soft-wrapped", y)
+		}
+	}
+	term.Resize(6, 3)
+	expectScreen(t, term, "EEEE", "EEEE", "EEEE")
+}
+
+// While the main screen is shown, its cursor has no bearing on the
+// alternate screen: a resize that drops rows keeps the alternate screen's
+// top rows.
+func TestResizeInactiveAltKeepsTop(t *testing.T) {
+	term := feed(New(5, 4, 10), "\x1b[?47hone\r\ntwo\r\nthree\x1b[?47l\x1b[4;1H")
+	term.Resize(5, 2)
+	feed(term, "\x1b[?47h")
+	expectScreen(t, term, "one", "two")
+}
+
+// A full reset empties the title stack, as well as the title.
+func TestResetClearsTitleStack(t *testing.T) {
+	term := feed(newT(10, 2), "\x1b]2;first\x07\x1b[22t\x1bc\x1b[23t")
+	if term.Title != "" {
+		t.Fatalf("title %q came back from before the reset", term.Title)
+	}
+}

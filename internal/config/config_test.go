@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,5 +108,56 @@ func TestThemes(t *testing.T) {
 	}
 	if id := NewThemeID(map[string]ThemeSpec{"my-theme": {}}, "My Theme!"); id != "my-theme-2" {
 		t.Fatalf("NewThemeID = %q", id)
+	}
+}
+
+// A config file that is a symlink stays one: the settings are written to
+// the file it points at.
+func TestSetValuesKeepsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dotfiles", "termite.json")
+	if err := os.MkdirAll(filepath.Dir(real), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(real, []byte(`{"font_size": 12}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "config.json")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetValues(link, map[string]any{"padding": 7}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the config file is no longer a symlink (%v)", err)
+	}
+	c, err := Load(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Padding != 7 || c.FontSize != 12 {
+		t.Fatalf("padding %d, font size %v: want 7 and 12", c.Padding, c.FontSize)
+	}
+}
+
+// WriteSample creates the folder of the path it is given (not necessarily
+// the default one) and never overwrites a file.
+func TestWriteSample(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "elsewhere", "termite.json")
+	if err := WriteSample(path); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(path); err != nil || c.FontSize != Default().FontSize {
+		t.Fatalf("the sample does not load as the defaults: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSample(path); !errors.Is(err, fs.ErrExist) {
+		t.Fatalf("writing over a file: %v, want fs.ErrExist", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "{}" {
+		t.Fatalf("the file was overwritten: %q", data)
 	}
 }

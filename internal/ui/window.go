@@ -80,6 +80,9 @@ func (ww *windowWidget) CloseEvent(ev *qtgui.QCloseEvent) {
 	}
 	ww.Super().CloseEvent(ev)
 	w.app.windowClosed(w)
+	// A closed window is not used again: delete it, and with it its
+	// panes' widgets, which hold the last references to their terminals.
+	w.w.DeleteLater()
 }
 
 // headerFontScale sizes the pane header font relative to the terminal's.
@@ -138,6 +141,7 @@ func (w *Window) NewTab(cwd string, cmd []string) *Tab {
 	t := newTab(w)
 	p, err := w.app.NewPane(t, cwd, cmd)
 	if err != nil {
+		t.container.DeleteLater()
 		qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 		return nil
 	}

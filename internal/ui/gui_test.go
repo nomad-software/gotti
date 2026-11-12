@@ -238,3 +238,62 @@ func TestClosePanes(t *testing.T) {
 		}
 	})
 }
+
+// TestFailedStart opens a tab, then a window, whose shell cannot start:
+// each shows the problem and leaves nothing behind, and the window that
+// was already open keeps its one tab.
+func TestFailedStart(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		a, w := newTestApp(t)
+		a.defaultCmd = []string{filepath.Join(t.TempDir(), "no-such-shell")}
+		warnings := 0
+		dismiss := func() {
+			whenModal(func(dlg *qtwidgets.QDialog) {
+				warnings++
+				dlg.Reject()
+			})
+		}
+		dismiss()
+		if tab := w.NewTab("", a.defaultCmd); tab != nil {
+			t.Fatal("NewTab returned a tab for a shell that failed")
+		}
+		if n, m := w.tabs.Count(), len(w.list); n != 1 || m != 1 {
+			t.Fatalf("%d tabs shown and %d kept, want 1 of each", n, m)
+		}
+		dismiss()
+		if nw := a.NewWindow(nil); nw != nil {
+			t.Fatal("NewWindow returned a window with no tab")
+		}
+		if n := len(a.windows); n != 1 {
+			t.Fatalf("%d windows open, want 1", n)
+		}
+		if warnings != 2 {
+			t.Fatalf("%d problems shown, want 2", warnings)
+		}
+	})
+}
+
+// TestCloseWindow closes a second window, which is then deleted, and
+// carries on working in the first.
+func TestCloseWindow(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		a, w := newTestApp(t)
+		w2 := a.NewWindow(nil)
+		qutetest.Wait(300)
+		a.runAction(w2.list[0].focused, "split_vertical")
+		qutetest.Wait(100)
+		w2.w.Close()
+		qutetest.Wait(300)
+		if n := len(a.windows); n != 1 || a.windows[0] != w {
+			t.Fatalf("%d windows open after closing one of 2", n)
+		}
+		// Xvfb has no window manager to activate w again: use its pane.
+		a.runAction(w.list[0].focused, "split_vertical")
+		qutetest.Wait(100)
+		if n := len(w.allPanes()); n != 2 {
+			t.Fatalf("%d panes after splitting, want 2", n)
+		}
+	})
+}

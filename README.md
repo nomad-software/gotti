@@ -27,7 +27,8 @@ vim).
   scrollback is one ring buffer allocated up front. Scrolling moves an
   index and copies nothing, and pages are only touched once lines are
   written. Clear Scrollback gives the memory back to the system and wipes
-  the old text.
+  the old text, also while a full-screen program has the alternate
+  screen up. Closed windows are deleted along with their scrollback.
 - **Resizes smoothly.** Reflow rewraps 10,000 lines of scrollback in
   about 12 ms, writing straight into the new buffer. Dragging a window
   edge doesn't stutter or pile up garbage.
@@ -94,7 +95,9 @@ work, through `glFinish`) and the instances each drew.
 `~/.config/termite/config.json` (or `$XDG_CONFIG_HOME/termite`). It is read
 at start-up. After editing it by hand, press Ctrl+Shift+R (`reload_config`)
 to apply the changes without a restart. `termite --write-config` writes every
-option with its default. Problems (misspelt keys, bad values, syntax
+option with its default (to the `--config` path when one is given), and
+never overwrites an existing file. Settings saved from the Options dialog
+keep a symlinked config file a symlink, writing to the file it points at. Problems (misspelt keys, bad values, syntax
 errors with their line) are shown in red in every pane's header until the
 file is fixed; whatever is valid still applies.
 
@@ -265,7 +268,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
-DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, focus, title, options), under Xvfb
+DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, focus, title, options, closing, failed starts), under Xvfb
 make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)

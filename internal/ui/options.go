@@ -215,3 +215,10 @@ func (a *App) showOptions(p *Pane) {
 		p.refocus()
 	}
 }
+
+// isMonospaced checks whether narrow and wide letters have equal advances.
+func isMonospaced(f *qtgui.QFont) bool {
+	fm := qtgui.NewQFontMetricsFWithFont(f)
+	i, m, w := fm.HorizontalAdvance("i"), fm.HorizontalAdvance("M"), fm.HorizontalAdvance("W")
+	return math.Abs(i-m) < 0.5 && math.Abs(m-w) < 0.5
+}

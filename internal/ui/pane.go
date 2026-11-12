@@ -183,6 +183,7 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	}
 	s, err := pty.Start(p.T, pty.Options{Command: command, Dir: cwd, Cols: 80, Rows: 24})
 	if err != nil {
+		p.Widget.DeleteLater() // never shown: nothing else refers to it
 		return nil, err
 	}
 	p.S = s

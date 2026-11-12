@@ -15,7 +15,8 @@ and architecture.
   `go vet ./...`, `staticcheck ./...` (in `$GOPATH/bin`) and
   `go run github.com/nomad-software/qute/cmd/qute@<version in go.mod> vet ./...`.
 - GUI tests (`internal/ui/gui_test.go`: splits and focus, window title,
-  options dialog, closing panes) need an X display, as offscreen gives no GL
+  options dialog, closing panes and windows, shells that fail to start)
+  need an X display, as offscreen gives no GL
   context: `DISPLAY=:99 go test ./internal/ui` under Xvfb (they skip without
   `DISPLAY`). Also run them with `GOGC=5` after ownership changes. Tests
   leave their windows open: closing the last window quits the app.
@@ -106,4 +107,16 @@ and architecture.
 - Bracketed paste must remove paste markers until none is left: a single
   pass lets "ESC[20" + marker + "1~" reassemble ESC[201~ and end the paste
   early (`input.Paste`, tested).
+- Ownership of closed things: a closed window is deleted (`DeleteLater` in
+  its `CloseEvent`), and a pane or tab whose shell failed to start deletes
+  its widgets; a window whose first tab failed closes again. Posted
+  callbacks check `p.exited`, which closing sets, before touching widgets.
+- Clear Scrollback goes through `Terminal.ClearScrollback`, which clears
+  the primary screen's scrollback: `Buf()` is the alternate screen (with
+  none) while a full-screen program runs.
+- Config writes: `config.SetValues` follows a symlinked config file, and
+  `config.WriteSample` (`--write-config`, Edit Config) creates the folder
+  of the path it is given, never `config.Dir()` regardless.
+- `DISPLAY` is usually set in the user's shell, so a plain `go test ./...`
+  runs the GUI tests on the real display; use `DISPLAY=:99` for Xvfb.
 - The user handles git; don't commit or suggest commits.

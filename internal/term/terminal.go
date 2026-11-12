@@ -260,7 +260,13 @@ func (t *Terminal) Resize(cols, rows int) {
 		pcx, pcy = t.savedMain.X, t.savedMain.Y
 	}
 	np, ncx, ncy := t.primary.Resize(cols, rows, true, pcx, pcy)
-	na, acx, acy := t.alt.Resize(cols, rows, false, t.cur.X, t.cur.Y)
+	// The alternate screen keeps the row of its own cursor on screen; while
+	// it is inactive it has none, and its top rows are kept.
+	acx, acy := 0, 0
+	if t.altActive {
+		acx, acy = t.cur.X, t.cur.Y
+	}
+	na, acx, acy := t.alt.Resize(cols, rows, false, acx, acy)
 	t.primary, t.alt = np, na
 	if t.altActive {
 		t.buf = na
@@ -770,6 +776,7 @@ func (t *Terminal) escDispatch(final byte) {
 					for x := range line {
 						line[x] = Cell{Ch: 'E'}
 					}
+					t.buf.SetWrapped(y, false)
 					t.buf.dirty[y] = true
 				}
 				t.top, t.bot = 0, t.rows-1
@@ -812,6 +819,7 @@ func (t *Terminal) fullReset() {
 	t.alt = NewBuffer(t.cols, t.rows, 0)
 	t.buf = t.primary
 	t.Title = ""
+	t.titleStack = nil
 	t.events |= EvMouseMode | EvCursorStyle
 }
 
@@ -1434,3 +1442,7 @@ func (t *Terminal) updateExtra() {
 // Reset performs a full terminal reset (RIS), as if the application had
 // sent ESC c. The caller holds Mu.
 func (t *Terminal) Reset() { t.fullReset() }
+
+// ClearScrollback drops the primary screen's scrollback, also while the
+// alternate screen (which has none) is shown. The caller holds Mu.
+func (t *Terminal) ClearScrollback() { t.primary.ClearScrollback() }

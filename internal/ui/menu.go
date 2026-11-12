@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"math"
-	"os"
-
 	"github.com/nomad-software/qute/qtcore"
 	"github.com/nomad-software/qute/qtgui"
 	"github.com/nomad-software/qute/qtwidgets"
@@ -171,20 +168,9 @@ func (p *Pane) contextMenuAtCursor() {
 // editConfig opens the config file in the desktop's editor, creating it
 // with the defaults first if needed.
 func (a *App) editConfig(p *Pane) {
-	if _, err := os.Stat(a.cfgPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(config.Dir(), 0o755); err == nil {
-			_ = os.WriteFile(a.cfgPath, config.SampleConfig(), 0o644)
-		}
-	}
+	_ = config.WriteSample(a.cfgPath) // fails harmlessly if it exists
 	if !qtgui.QDesktopServicesOpenUrl(qtcore.QUrlFromLocalFile(a.cfgPath)) {
 		qtwidgets.QMessageBoxInformation(p.Widget, desktop.DisplayName, "Config file: "+a.cfgPath)
 		p.refocus()
 	}
-}
-
-// isMonospaced checks whether narrow and wide letters have equal advances.
-func isMonospaced(f *qtgui.QFont) bool {
-	fm := qtgui.NewQFontMetricsFWithFont(f)
-	i, m, w := fm.HorizontalAdvance("i"), fm.HorizontalAdvance("M"), fm.HorizontalAdvance("W")
-	return math.Abs(i-m) < 0.5 && math.Abs(m-w) < 0.5
 }

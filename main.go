@@ -2,8 +2,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -34,13 +36,9 @@ func main() {
 	flag.Parse()
 
 	if *writeConfig {
-		if err := os.MkdirAll(config.Dir(), 0o755); err != nil {
-			fatal(err)
-		}
-		if _, err := os.Stat(*cfgPath); err == nil {
+		if err := config.WriteSample(*cfgPath); errors.Is(err, fs.ErrExist) {
 			fatal(fmt.Errorf("%s already exists", *cfgPath))
-		}
-		if err := os.WriteFile(*cfgPath, config.SampleConfig(), 0o644); err != nil {
+		} else if err != nil {
 			fatal(err)
 		}
 		fmt.Println("wrote", *cfgPath)

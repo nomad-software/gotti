@@ -165,7 +165,9 @@ func (a *App) rebuildFonts() {
 
 // ---------------------------------------------------------------- windows
 
-// NewWindow opens a window with one tab (or the given layout).
+// NewWindow opens a window with one tab (or the given layout). It returns
+// nil when no tab could be opened: the problem has been shown, and the
+// window is closed again (which quits if it was the only one).
 func (a *App) NewWindow(layout *LayoutFile) *Window {
 	w := newWindow(a)
 	a.windows = append(a.windows, w)
@@ -176,6 +178,10 @@ func (a *App) NewWindow(layout *LayoutFile) *Window {
 		w.tabs.SetCurrentIndex(0) // a layout opens on its first tab
 	} else {
 		w.NewTab("", a.defaultCmd)
+	}
+	if len(w.list) == 0 {
+		w.w.Close()
+		return nil
 	}
 	if a.cfg.WindowMaximized {
 		w.w.ShowMaximized()
@@ -199,6 +205,9 @@ func (a *App) allPanes() []*Pane {
 }
 
 func (a *App) windowClosed(w *Window) {
+	if a.focused != nil && a.focused.tab.win == w {
+		a.focused = nil
+	}
 	for i, x := range a.windows {
 		if x == w {
 			a.windows = append(a.windows[:i], a.windows[i+1:]...)
@@ -394,10 +403,10 @@ func (a *App) runAction(p *Pane, action string) {
 		p.contextMenuAtCursor()
 	case "clear_scrollback":
 		p.T.Mu.Lock()
-		p.T.Buf().ClearScrollback()
+		p.T.ClearScrollback()
 		p.T.Mu.Unlock()
 		p.viewTop = -1
-		p.view.Matches = nil
+		p.view.Matches, p.view.Current = nil, -1
 		p.clearSelection()
 		p.invalidate()
 	case "reset_terminal":
