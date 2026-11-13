@@ -389,14 +389,14 @@ func (a *App) runAction(p *Pane, action string) {
 		name, ok := qtwidgets.QInputDialogGetTextFull(w.w, "Save layout", "Layout name:", qtwidgets.QLineEditNormal, "", 0, 0)
 		if ok && name != "" {
 			if err := w.SaveLayout(name); err != nil {
-				warn(w.w, desktop.DisplayName, err.Error())
+				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 			}
 		}
 		p.refocus()
 	case "load_layout":
 		names := ListLayouts()
 		if len(names) == 0 {
-			inform(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
+			qtwidgets.QMessageBoxInformation(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
 			return
 		}
 		name, ok := qtwidgets.QInputDialogGetItemFull(w.w, "Load layout", "Layout:", names, 0, false, 0, 0)
@@ -404,7 +404,7 @@ func (a *App) runAction(p *Pane, action string) {
 		if ok {
 			lf, err := LoadLayout(name)
 			if err != nil {
-				warn(w.w, desktop.DisplayName, err.Error())
+				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 				return
 			}
 			w.loadLayout(lf)
@@ -441,7 +441,7 @@ func (a *App) runAction(p *Pane, action string) {
 func (a *App) split(p *Pane, orient qtcore.Orientation) {
 	np, err := a.NewPane(p.tab, p.cwd(), a.defaultCmd)
 	if err != nil {
-		warn(p.Widget, desktop.DisplayName, err.Error())
+		qtwidgets.QMessageBoxWarning(p.Widget, desktop.DisplayName, err.Error())
 		return
 	}
 	p.tab.Split(p, orient, np)

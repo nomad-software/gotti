@@ -78,9 +78,13 @@ type Renderer struct {
 	cols, rows int
 	fbW, fbH   int
 	cells      []term.Cell
-	rowAbs     []int64
-	rowDirty   []bool
-	allDirty   bool
+	// extras[i] is the underline colour and link of cells[i], copied with
+	// it while the terminal is locked: its tables reuse indexes. Only read
+	// where cells[i].Extra != 0.
+	extras   []term.Extra
+	rowAbs   []int64
+	rowDirty []bool
+	allDirty bool
 	// Each row builds into a fixed slot of rects and glyphs, rebuilt only
 	// when the row is damaged; rowRects and rowGlyphs count what it used.
 	// Every frame the used parts are packed into packedRects/packedGlyphs,
@@ -150,6 +154,7 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) {
 	if cols != r.cols || rows != r.rows {
 		r.cols, r.rows = cols, rows
 		r.cells = make([]term.Cell, cols*rows)
+		r.extras = make([]term.Extra, cols*rows)
 		r.rowAbs = make([]int64, rows)
 		r.rowDirty = make([]bool, rows)
 		r.rectSlot = cols + 1
@@ -176,6 +181,7 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) {
 		r.allDirty = true
 	}
 	scrolled := top != r.screenTopAbs
+	hasExtras := t.HasExtras()
 	if v.Dirty || (scrolled && buf.AnyDirty()) {
 		r.allDirty = true
 	}
@@ -202,6 +208,14 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) {
 			clear(dst)
 		} else {
 			copy(dst, buf.LogicalLine(li))
+		}
+		if hasExtras {
+			ex := r.extras[y*cols : (y+1)*cols]
+			for x := range dst {
+				if e := dst[x].Extra; e != 0 {
+					ex[x] = t.ExtraOf(e)
+				}
+			}
 		}
 		r.rowAbs[y] = abs
 		r.rowDirty[y] = true
@@ -624,7 +638,7 @@ func (r *Renderer) buildRow(y int) {
 			}
 			// optional ligatures over runs of ASCII punctuation
 			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 && ligatureStart[c.Ch] {
-				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, abs, x, n, cursorHere) {
+				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, r.extras[y*cols:(y+1)*cols], abs, x, n, cursorHere) {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them
 					for k := 1; k < n; k++ {
@@ -660,10 +674,12 @@ func (r *Renderer) buildRow(y int) {
 		}
 		// decorations
 		ulColor := fg
+		var ext term.Extra
 		if c.Extra != 0 {
-			if e := term.ExtraOf(c.Extra); e.ULColor != 0 {
-				ulColor = r.resolve(e.ULColor, true, false)
-			}
+			ext = r.extras[y*cols+x]
+		}
+		if ext.ULColor != 0 {
+			ulColor = r.resolve(ext.ULColor, true, false)
 		}
 		dec := func(kind int, color uint32) {
 			k := glyphKey{ch: rune(kind), kind: kindDecoration, cells: uint8(wcells)}
@@ -693,7 +709,7 @@ func (r *Renderer) buildRow(y int) {
 		}
 		if r.view.HoverActive && inMatch(r.view.Hover, abs, x) && c.Attr.Underline() == 0 {
 			dec(decUnderline, fg)
-		} else if c.Extra != 0 && term.ExtraOf(c.Extra).Link != 0 && c.Attr.Underline() == 0 {
+		} else if ext.Link != 0 && c.Attr.Underline() == 0 {
 			dec(decLinkUnderline, mix(fg, bg, 0.4))
 		}
 		if isCursor {
@@ -713,14 +729,14 @@ func (r *Renderer) buildRow(y int) {
 // plainRun reports whether the n cells from x can be drawn as one ligature:
 // a ligature skips the per-cell work, so none of them may have the cursor or
 // a line drawn over or under it.
-func (r *Renderer) plainRun(line []term.Cell, abs int64, x, n int, cursorHere bool) bool {
+func (r *Renderer) plainRun(line []term.Cell, extras []term.Extra, abs int64, x, n int, cursorHere bool) bool {
 	if cursorHere && r.curX >= x && r.curX < x+n {
 		return false
 	}
 	for k := x; k < x+n; k++ {
 		c := line[k]
 		if c.Attr.Underline() != 0 || c.Attr&(term.AttrStrike|term.AttrOverline) != 0 ||
-			c.Extra != 0 && term.ExtraOf(c.Extra).Link != 0 ||
+			c.Extra != 0 && extras[k].Link != 0 ||
 			r.view.HoverActive && inMatch(r.view.Hover, abs, k) {
 			return false
 		}

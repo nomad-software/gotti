@@ -268,7 +268,7 @@ instances and draws without the lock. All Qt and GL calls happen on the
 main thread.
 
 Key implementation points:
-- **Cells** are 16 bytes with no pointers: rune, packed fg/bg (`kind<<24 | index-or-RGB`), 16-bit flags, and a 16-bit index into an interned table for rare data (underline colour, OSC 8 link).
+- **Cells** are 16 bytes with no pointers: rune, packed fg/bg (`kind<<24 | index-or-RGB`), 16-bit flags, and a 16-bit index into an interned table for rare data (underline colour, OSC 8 link). Each terminal has its own table; when it fills, the entries no cell uses any more are reclaimed, so a long session making many links never runs out.
 - **Grid and scrollback** form one flat `[]Cell`, allocated up front and used as a ring. Scrolling into scrollback moves an index; nothing is copied. Untouched pages never become resident.
 - **Parser**: a VT500-style state machine with fast paths for the bulk of real output. Runs of printable ASCII are written in one go, CSI parameters are scanned in a tight loop, and OSC/DCS payloads are copied whole. Cells are stored from the pen in one 16-byte write. Steady-state allocations are zero.
 - **Reflow** measures the result in a first pass, then writes only the lines that are kept straight into the new ring, so a resize allocates nothing but the new buffer.
@@ -285,7 +285,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
-DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, dragging panes, focus, title, toolbar, options, closing, failed starts), under Xvfb
+DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, dragging panes, saved layouts, focus, title, toolbar, options, closing, failed starts), under Xvfb
 make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)

@@ -196,7 +196,7 @@ func (t *Terminal) oscHyperlink(s string) {
 	if len(uri) > 4096 {
 		uri = uri[:4096]
 	}
-	t.link = internLink(Link{ID: id, URI: uri})
+	t.link = t.internLink(Link{ID: id, URI: uri})
 	t.updateExtra()
 }
 

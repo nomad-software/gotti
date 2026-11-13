@@ -14,12 +14,15 @@ and architecture.
 - First build compiles qute's shims (minutes). Always run `gofmt -l .`,
   `go vet ./...`, `staticcheck ./...` (in `$GOPATH/bin`) and
   `go run github.com/nomad-software/qute/cmd/qute@<version in go.mod> vet ./...`.
-- GUI tests (`internal/ui/gui_test.go`, `dragpane_test.go`: splits and focus, dragging panes, window title, toolbar,
+- GUI tests (`internal/ui/gui_test.go`, `dragpane_test.go`: splits and focus, dragging panes, saved layouts, window title, toolbar,
   options dialog, closing panes and windows, shells that fail to start)
   need an X display, as offscreen gives no GL
   context: `DISPLAY=:99 go test ./internal/ui` under Xvfb (they skip without
-  `DISPLAY`). Also run them with `GOGC=5` after ownership changes. Tests
-  leave their windows open: closing the last window quits the app.
+  `DISPLAY`). Also run them with `GOGC=5` after ownership changes. Under
+  `qutetest.TestMain` closing the last window does not quit. Drive the mouse
+  with `qutetest.Press`/`Move`/`Release`/`Drag`, wait on a condition with
+  `qutetest.WaitFor` rather than a loop of `Wait`s, and answer menus and
+  dialogs opened by the call under test with `WhenPopup`/`WhenModal`.
 - Run `make build` after every change so `./termite` is current.
 - GUI checks: run under `Xvfb :99` with `QT_QPA_PLATFORM=xcb`, set
   `XDG_CONFIG_HOME`/`XDG_DATA_HOME` to a scratch dir (start-up writes a desktop
@@ -50,6 +53,12 @@ and architecture.
   OSC/DCS payloads), two-pass reflow, OSC/DCS handling. `Event`s exist only
   for what the UI acts on; the renderer notices screen, colour and
   alternate-screen changes itself.
+- Cell extras (underline colour, OSC 8 link) are interned per terminal
+  (`term/extras.go`) and reclaimed when a table fills, so their indexes are
+  reused: read them only under `Mu` (`Terminal.ExtraOf`, `LinkAt`,
+  `LinkExtent`). The renderer copies each cell's extras in `Prepare`, never
+  looks them up in `Render`. Grapheme clusters stay in one shared,
+  append-only table: the shared glyph cache keys them by index.
 - `internal/render` atlas, procedural box drawing, instanced GL renderer (two
   draw calls; per-row instance slots rebuilt only when damaged, and the used
   instances packed each frame so empty slots are never drawn).
@@ -161,11 +170,10 @@ and architecture.
   its widgets; a window whose first tab failed closes again. Posted
   callbacks check `p.exited`, which closing sets, before touching widgets.
 - Menus and dialogs run nested event loops in which a pane (and with its
-  last tab, its window) can close and be deleted. Use `ask`/`warn`/`inform`
-  (`qtutil.go`), never Qt's static `QMessageBox` functions, which keep the
-  box on the stack where its parent's deletion frees it twice; check
-  `Alive()` before deleting a menu afterwards, and `p.exited` before using
-  the pane (`refocus` does).
+  last tab, its window) can close and be deleted. qute's static
+  `QMessageBox…` functions are safe then (the box is on the heap and
+  answers `NoButton`); check `Alive()` before deleting a menu afterwards,
+  and `p.exited` before using the pane (`refocus` does).
 - Clear Scrollback goes through `Terminal.ClearScrollback`, which clears
   the primary screen's scrollback: `Buf()` is the alternate screen (with
   none) while a full-screen program runs.

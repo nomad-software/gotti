@@ -34,22 +34,28 @@ func TestPlainRun(t *testing.T) {
 	arrow := func(attr term.Attr) []term.Cell {
 		return []term.Cell{{Ch: '-', Attr: attr}, {Ch: '>', Attr: attr}, {Ch: ' '}}
 	}
+	none := make([]term.Extra, 3)
 	r := &Renderer{}
 	r.curX = 1
-	if !r.plainRun(arrow(0), 0, 0, 2, false) {
+	if !r.plainRun(arrow(0), none, 0, 0, 2, false) {
 		t.Error("a plain -> is not drawn as a ligature")
 	}
-	if r.plainRun(arrow(0), 0, 0, 2, true) {
+	if r.plainRun(arrow(0), none, 0, 0, 2, true) {
 		t.Error("the cursor on > is lost")
 	}
 	for _, attr := range []term.Attr{term.Attr(0).WithUnderline(term.ULSingle), term.AttrStrike, term.AttrOverline} {
-		if r.plainRun(arrow(attr), 0, 0, 2, false) {
+		if r.plainRun(arrow(attr), none, 0, 0, 2, false) {
 			t.Errorf("attribute %b drops its line", attr)
 		}
 	}
+	linked := arrow(0)
+	linked[1].Extra = 1
+	if r.plainRun(linked, []term.Extra{{}, {Link: 1}, {}}, 0, 0, 2, false) {
+		t.Error("a link loses its underline")
+	}
 	r.view.HoverActive = true
 	r.view.Hover = term.Match{Start: term.Pos{Line: 0, Col: 1}, End: term.Pos{Line: 0, Col: 2}}
-	if r.plainRun(arrow(0), 0, 0, 2, false) {
+	if r.plainRun(arrow(0), none, 0, 0, 2, false) {
 		t.Error("a hovered link loses its underline")
 	}
 }

@@ -66,7 +66,7 @@ func qtMods(m qtcore.KeyboardModifier) input.Mods {
 
 // translateKey converts a Qt key event to the toolkit-neutral form.
 func translateKey(ev *qtgui.QKeyEvent, release bool) input.KeyEvent {
-	k := qtcore.Key(ev.Key())
+	k := ev.Key()
 	mods := ev.Modifiers()
 	out := input.KeyEvent{Mods: qtMods(mods), Action: input.Press, Keypad: mods&qtcore.KeypadModifier != 0}
 	if release {

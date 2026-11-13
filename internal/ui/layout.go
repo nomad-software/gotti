@@ -398,14 +398,20 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 		panes = append(panes, np)
 		cur = np
 	}
-	// apply sizes to the splitter now holding these panes
-	if node := t.root.find(p); node != nil && node.parent != nil && len(ln.Sizes) == len(node.parent.children) {
-		node.parent.split.SetSizes(ln.Sizes)
+	// The splitter now holding these panes, found before the nested splits
+	// are built: p may be inside one of them afterwards.
+	var level *Node
+	if node := t.root.find(p); node != nil {
+		level = node.parent
 	}
 	for i, c := range ln.Children {
 		if panes[i] != nil {
 			a.buildLayout(t, panes[i], c)
 		}
+	}
+	// Sizes go on last: building a nested split resets its parent's.
+	if level != nil && len(ln.Sizes) == len(level.children) {
+		level.split.SetSizes(ln.Sizes)
 	}
 }
 

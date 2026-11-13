@@ -111,6 +111,7 @@ func main() {
 }
 
 func fatal(err error) {
+	pprof.StopCPUProfile() // os.Exit skips the deferred stop; a no-op unless profiling
 	fmt.Fprintln(os.Stderr, "termite:", err)
 	os.Exit(1)
 }

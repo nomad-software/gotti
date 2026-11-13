@@ -304,19 +304,41 @@ func (b *Buffer) URLAt(p Pos) (string, Match, bool) {
 	return "", Match{}, false
 }
 
-// LinkAt returns the OSC 8 hyperlink at screen-independent position p.
-func (b *Buffer) LinkAt(p Pos) (Link, bool) {
+// linkID returns the id of the hyperlink at p on the current screen, or 0.
+func (t *Terminal) linkID(p Pos) uint32 {
+	b := t.buf
 	i := b.AbsToLogical(p.Line)
 	if i < 0 || p.Col < 0 || p.Col >= b.Cols {
-		return Link{}, false
+		return 0
 	}
-	c := b.LogicalLine(i)[p.Col]
-	if c.Extra == 0 {
-		return Link{}, false
+	return t.ExtraOf(b.LogicalLine(i)[p.Col].Extra).Link
+}
+
+// LinkAt returns the OSC 8 hyperlink at screen-independent position p on
+// the current screen. The caller holds Mu.
+func (t *Terminal) LinkAt(p Pos) (Link, bool) {
+	if id := t.linkID(p); id != 0 {
+		return t.LinkOf(id), true
 	}
-	id := ExtraOf(c.Extra).Link
+	return Link{}, false
+}
+
+// LinkExtent returns the cells around p on its row that carry the same
+// hyperlink as p, and whether p has one. Cells of one link may differ in
+// underline colour, so the link ids are compared, not the extras. The
+// caller holds Mu.
+func (t *Terminal) LinkExtent(p Pos) (Match, bool) {
+	id := t.linkID(p)
 	if id == 0 {
-		return Link{}, false
+		return Match{}, false
 	}
-	return LinkOf(id), true
+	line := t.buf.LogicalLine(t.buf.AbsToLogical(p.Line))
+	s, e := p.Col, p.Col+1
+	for s > 0 && t.ExtraOf(line[s-1].Extra).Link == id {
+		s--
+	}
+	for e < len(line) && t.ExtraOf(line[e].Extra).Link == id {
+		e++
+	}
+	return Match{Start: Pos{Line: p.Line, Col: s}, End: Pos{Line: p.Line, Col: e}}, true
 }

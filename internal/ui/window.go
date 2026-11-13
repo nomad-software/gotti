@@ -22,6 +22,7 @@ type Window struct {
 	toolbar *toolbar
 	tabs    *qtwidgets.QTabWidget
 	list    []*Tab
+	lit     *Pane // the pane whose header has the focused colours
 }
 
 func newWindow(a *App) *Window {
@@ -159,7 +160,7 @@ func (w *Window) NewTab(cwd string, cmd []string) *Tab {
 	p, err := w.app.NewPane(t, cwd, cmd)
 	if err != nil {
 		t.container.DeleteLater()
-		warn(w.w, desktop.DisplayName, err.Error())
+		qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 		return nil
 	}
 	t.setRoot(&Node{pane: p})

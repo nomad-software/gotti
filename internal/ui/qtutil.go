@@ -34,33 +34,3 @@ func mapToGlobal(w qtwidgets.QWidgetLike, x, y int) (int, int) {
 	g := w.AsQWidget().MapToGlobal(qtcore.QPoint{X: x, Y: y})
 	return g.X, g.Y
 }
-
-// Message boxes. Qt's static QMessageBox functions keep the box on the
-// stack, so if its parent is deleted while it is open (a pane whose shell
-// exits, or the window that closes with it) the box is destroyed twice.
-// These keep it on the heap, where the parent's deletion frees it once.
-
-// messageBox shows a modal box over parent and returns the button chosen,
-// or 0 when the box went with its parent.
-func messageBox(parent qtwidgets.QWidgetLike, icon qtwidgets.QMessageBoxIcon, title, text string, buttons qtwidgets.QMessageBoxStandardButtons) qtwidgets.QMessageBoxStandardButtons {
-	box := qtwidgets.NewQMessageBoxWithIcon(icon, title, text, buttons, parent)
-	r := qtwidgets.QMessageBoxStandardButtons(box.Exec())
-	if !box.Alive() {
-		return 0
-	}
-	box.DeleteLater()
-	return r
-}
-
-// ask asks a yes/no question; closing the box answers no.
-func ask(parent qtwidgets.QWidgetLike, title, text string) bool {
-	return messageBox(parent, qtwidgets.QMessageBoxIconQuestion, title, text, qtwidgets.QMessageBoxYes|qtwidgets.QMessageBoxNo) == qtwidgets.QMessageBoxYes
-}
-
-func warn(parent qtwidgets.QWidgetLike, title, text string) {
-	messageBox(parent, qtwidgets.QMessageBoxIconWarning, title, text, qtwidgets.QMessageBoxOk)
-}
-
-func inform(parent qtwidgets.QWidgetLike, title, text string) {
-	messageBox(parent, qtwidgets.QMessageBoxIconInformation, title, text, qtwidgets.QMessageBoxOk)
-}

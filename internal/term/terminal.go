@@ -82,6 +82,7 @@ type Terminal struct {
 	tabs      []bool
 	ulColor   Color
 	link      uint32
+	interned  internTables // the cells' extras and links (extras.go)
 	lastPrint struct {
 		x, y   int
 		ok, ri bool // ri: the cell holds a lone regional indicator
@@ -137,7 +138,7 @@ type Terminal struct {
 // New creates a terminal of the given size.
 func New(cols, rows, scrollback int) *Terminal {
 	cols, rows = max(cols, 2), max(rows, 1) // as Resize: a wide character needs two columns
-	t := &Terminal{cols: cols, rows: rows, scrollback: scrollback}
+	t := &Terminal{cols: cols, rows: rows, scrollback: scrollback, interned: newInternTables()}
 	t.primary = NewBuffer(cols, rows, scrollback)
 	t.alt = NewBuffer(cols, rows, 0)
 	t.buf = t.primary
@@ -640,7 +641,7 @@ func (t *Terminal) replyCursorPos(prefix string) {
 }
 
 func (t *Terminal) restorePenExtra() {
-	e := ExtraOf(t.cur.pen.Extra)
+	e := t.ExtraOf(t.cur.pen.Extra)
 	t.ulColor, t.link = e.ULColor, e.Link
 }
 
@@ -1449,7 +1450,7 @@ func parseExtColor(ps *Params, k int, subs []int32) (Color, int, bool) {
 }
 
 func (t *Terminal) updateExtra() {
-	t.cur.pen.Extra = internExtra(Extra{ULColor: t.ulColor, Link: t.link})
+	t.cur.pen.Extra = t.internExtra(Extra{ULColor: t.ulColor, Link: t.link})
 }
 
 // Reset performs a full terminal reset (RIS), as if the application had

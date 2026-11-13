@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/nomad-software/qute/qtcore"
-	"github.com/nomad-software/qute/qtgui"
 	"github.com/nomad-software/qute/qutetest"
 )
 
@@ -44,25 +43,23 @@ func TestDropHalf(t *testing.T) {
 	}
 }
 
-// dragHeader drags p's header to the screen point (x, y) as the mouse
-// would: press, a move past the drag distance, a move to the point, and
-// the release there. beforeRelease, if any, runs before the release.
+// dragHeader drags p's header to the screen point (x, y) with the left
+// button. beforeRelease, if any, runs while it is still held there.
 func dragHeader(p *Pane, x, y float64, beforeRelease ...func()) {
 	h := p.header
-	gx, gy := mapToGlobal(h, 5, 5)
-	send := func(typ qtcore.QEventType, x, y float64, button, buttons qtcore.MouseButtons) {
-		lx, ly := mapToGlobal(h, 0, 0)
-		local := qtcore.QPointF{X: x - float64(lx), Y: y - float64(ly)}
-		ev := qtgui.NewQMouseEvent(typ, local, qtcore.QPointF{X: x, Y: y}, button, buttons, qtcore.NoModifier)
-		qtcore.QCoreApplicationSendEvent(h, ev)
+	lx, ly := mapToGlobal(h, 0, 0)
+	from, to := qtcore.QPoint{X: 5, Y: 5}, qtcore.QPoint{X: int(x) - lx, Y: int(y) - ly}
+	if len(beforeRelease) == 0 {
+		qutetest.Drag(h, qtcore.LeftButton, from, to)
+		return
 	}
-	send(qtcore.QEventMouseButtonPress, float64(gx), float64(gy), qtcore.LeftButton, qtcore.LeftButton)
-	send(qtcore.QEventMouseMove, float64(gx+40), float64(gy+40), qtcore.NoButton, qtcore.LeftButton)
-	send(qtcore.QEventMouseMove, x, y, qtcore.NoButton, qtcore.LeftButton)
+	qutetest.Press(h, qtcore.LeftButton, qtcore.NoModifier, from)
+	qutetest.Move(h, qtcore.QPoint{X: from.X + 40, Y: from.Y + 40})
+	qutetest.Move(h, to)
 	for _, f := range beforeRelease {
 		f()
 	}
-	send(qtcore.QEventMouseButtonRelease, x, y, qtcore.LeftButton, qtcore.NoButton)
+	qutetest.Release(h, qtcore.LeftButton, qtcore.NoModifier, to)
 }
 
 // layoutShape describes a split tree: pane numbers, with "|" for side by
@@ -191,4 +188,68 @@ func TestDragPaneFlattens(t *testing.T) {
 			t.Errorf("sizes after flattening: %v", ln.Sizes)
 		}
 	})
+}
+
+// TestLayoutRoundTrip saves nested layouts with uneven sizes and opens
+// them again in a new window: the same tree, in the same proportions.
+func TestLayoutRoundTrip(t *testing.T) {
+	needGUI(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	qutetest.Run(t, func() {
+		// C goes below B, then below A: the first child split as well.
+		for _, onto := range []int{1, 0} {
+			roundTrip(t, onto)
+		}
+	})
+}
+
+func roundTrip(t *testing.T, onto int) {
+	a, w := newTestApp(t)
+	for range 2 {
+		a.runAction(focusedPane(t, w), "split_vertical")
+		qutetest.Wait(100)
+	}
+	tab := w.tabAt(0)
+	ps := tab.Panes()
+	r := widgetRect(ps[onto].Widget)
+	dragHeader(ps[2], r.x+r.w/2, r.y+r.h*0.9) // (A|(B/C)) or ((A/C)|B)
+	qutetest.Wait(100)
+	total := func(s []int) (n int) {
+		for _, v := range s {
+			n += v
+		}
+		return n
+	}
+	outer, inner := tab.root.split, tab.root.children[onto].split
+	o, i := total(outer.Sizes()), total(inner.Sizes())
+	outer.SetSizes([]int{o / 4, o - o/4})
+	inner.SetSizes([]int{i * 2 / 3, i - i*2/3})
+	qutetest.Wait(100)
+	if err := w.SaveLayout("round trip"); err != nil {
+		t.Fatal(err)
+	}
+	lf, err := LoadLayout("round trip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w2 := a.NewWindow(lf)
+	qutetest.Wait(300)
+	var compare func(path string, g, w LayoutNode)
+	compare = func(path string, g, w LayoutNode) {
+		if g.Split != w.Split || len(g.Children) != len(w.Children) {
+			t.Fatalf("%s: %q with %d children, want %q with %d", path, g.Split, len(g.Children), w.Split, len(w.Children))
+		}
+		gt, wt := total(g.Sizes), total(w.Sizes)
+		for k := range g.Sizes {
+			gf, wf := float64(g.Sizes[k])/float64(gt), float64(w.Sizes[k])/float64(wt)
+			if gf-wf > 0.03 || wf-gf > 0.03 {
+				t.Errorf("%s: sizes %v, want the proportions of %v", path, g.Sizes, w.Sizes)
+				break
+			}
+		}
+		for k := range g.Children {
+			compare(path+"/"+string(rune('0'+k)), g.Children[k], w.Children[k])
+		}
+	}
+	compare(string(rune('0'+onto)), w2.tabAt(0).root.save(), tab.root.save())
 }

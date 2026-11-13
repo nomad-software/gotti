@@ -106,11 +106,11 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 		rm := lm.sub("Remove")
 		for _, n := range names {
 			rm.item(n, "", func() {
-				if !ask(w.w, "Remove Layout", "Remove the layout \""+n+"\"?") {
+				if qtwidgets.QMessageBoxQuestion(w.w, "Remove Layout", "Remove the layout \""+n+"\"?") != qtwidgets.QMessageBoxYes {
 					return
 				}
 				if err := RemoveLayout(n); err != nil {
-					warn(w.w, desktop.DisplayName, err.Error())
+					qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 				}
 			})
 		}
@@ -119,7 +119,7 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 			lm.item(n, "", func() {
 				lf, err := LoadLayout(n)
 				if err != nil {
-					warn(w.w, desktop.DisplayName, err.Error())
+					qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
 					return
 				}
 				w.loadLayout(lf)
@@ -175,7 +175,7 @@ func (p *Pane) contextMenuAtCursor() {
 func (a *App) editConfig(p *Pane) {
 	_ = config.WriteSample(a.cfgPath) // fails harmlessly if it exists
 	if !qtgui.QDesktopServicesOpenUrl(qtcore.QUrlFromLocalFile(a.cfgPath)) {
-		inform(p.Widget, desktop.DisplayName, "Config file: "+a.cfgPath)
+		qtwidgets.QMessageBoxInformation(p.Widget, desktop.DisplayName, "Config file: "+a.cfgPath)
 		p.refocus()
 	}
 }

@@ -142,8 +142,8 @@ func TestSGR(t *testing.T) {
 	if a.Fg != Indexed(1) || a.Bg != Indexed(100) {
 		t.Fatalf("colours %x %x", a.Fg, a.Bg)
 	}
-	if ExtraOf(a.Extra).ULColor != RGB(1, 2, 3) {
-		t.Fatalf("ul colour %x", ExtraOf(a.Extra).ULColor)
+	if term.ExtraOf(a.Extra).ULColor != RGB(1, 2, 3) {
+		t.Fatalf("ul colour %x", term.ExtraOf(a.Extra).ULColor)
 	}
 	if l[1].Attr != 0 || l[1].Fg != 0 || l[1].Extra != 0 {
 		t.Fatalf("reset failed %+v", l[1])
@@ -262,11 +262,11 @@ func TestOSC(t *testing.T) {
 		t.Fatal("clipboard", term.ClipboardWrites)
 	}
 	feed(term, "\x1b]8;id=1;https://example.com\x1b\\link\x1b]8;;\x1b\\ no")
-	l, ok := term.buf.LinkAt(Pos{term.buf.ScreenTopAbs(), 1})
+	l, ok := term.LinkAt(Pos{term.buf.ScreenTopAbs(), 1})
 	if !ok || l.URI != "https://example.com" {
 		t.Fatal("hyperlink", l, ok)
 	}
-	if _, ok := term.buf.LinkAt(Pos{term.buf.ScreenTopAbs(), 5}); ok {
+	if _, ok := term.LinkAt(Pos{term.buf.ScreenTopAbs(), 5}); ok {
 		t.Fatal("link should have ended")
 	}
 }

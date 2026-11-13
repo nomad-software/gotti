@@ -234,10 +234,8 @@ func TestClosePanes(t *testing.T) {
 		}
 		for n := 4; n > 1; n-- {
 			a.runAction(focusedPane(t, w), "close_pane")
-			for i := 0; i < 50 && len(w.allPanes()) == n; i++ {
-				qutetest.Wait(20)
-			}
-			if got := len(w.allPanes()); got != n-1 {
+			if !qutetest.WaitFor(func() bool { return len(w.allPanes()) == n-1 }, 2*time.Second) {
+				got := len(w.allPanes())
 				t.Fatalf("%d panes after closing one of %d", got, n)
 			}
 			focusedPane(t, w) // focus moved to a pane that is left
@@ -785,31 +783,70 @@ func TestPaneExitsUnderMenu(t *testing.T) {
 	qutetest.Run(t, func() {
 		a, w := newTestApp(t)
 		a.cfg.PasteWarning = "always"
-		for _, open := range []func(p *Pane){
-			func(p *Pane) { p.showContextMenu(100, 100, nil) },
-			func(p *Pane) { p.paste("one\ntwo\n") },
+		for _, c := range []struct {
+			when func(testing.TB, func(*qtwidgets.QWidget))
+			open func(p *Pane)
+		}{
+			{qutetest.WhenPopup, func(p *Pane) { p.showContextMenu(100, 100, nil) }},
+			{qutetest.WhenModal, func(p *Pane) { p.paste("one\ntwo\n") }},
 		} {
 			a.runAction(focusedPane(t, w), "split_vertical")
 			qutetest.Wait(200)
 			p := focusedPane(t, w)
 			n := len(w.allPanes())
-			time.AfterFunc(300*time.Millisecond, func() {
-				qute.Post(func() { p.S.WriteString("exit\r") })
+			c.when(t, func(m *qtwidgets.QWidget) {
+				p.S.WriteString("exit\r")
+				if !qutetest.WaitFor(func() bool { return len(w.allPanes()) == n-1 }, 5*time.Second) {
+					t.Errorf("the pane did not close under its menu or dialog")
+				}
+				// It goes with the pane, unless that is only deleted later.
+				qutetest.WaitFor(func() bool { return !m.Alive() }, 500*time.Millisecond)
+				if m.Alive() {
+					m.Close()
+				}
 			})
-			time.AfterFunc(1500*time.Millisecond, func() {
-				qute.Post(func() {
-					if m := qtwidgets.QApplicationActivePopupWidget(); m != nil {
-						m.Close()
-					}
-					if m := qtwidgets.QApplicationActiveModalWidget(); m != nil {
-						m.Close()
-					}
-				})
-			})
-			open(p)
-			qutetest.Wait(200)
+			c.open(p)
 			if got := len(w.allPanes()); got != n-1 {
 				t.Fatalf("%d panes after one of %d exited", got, n)
+			}
+		}
+	})
+}
+
+// TestHeaderKeptAcrossWindowSwitch checks that the focused pane's header
+// keeps its colours while the window is inactive or a menu is open (so it
+// does not flash when the window comes back), and still follows the focus
+// between panes.
+func TestHeaderKeptAcrossWindowSwitch(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		a, w := newTestApp(t)
+		a.runAction(w.currentPane(), "split_vertical")
+		qutetest.Wait(200)
+		panes := w.allPanes()
+		lit := func() []bool {
+			return []bool{panes[0].header.Property("focused").ToBool(), panes[1].header.Property("focused").ToBool()}
+		}
+		panes[0].GL.SetFocus()
+		qutetest.Wait(100)
+		for _, reason := range []qtcore.FocusReason{qtcore.ActiveWindowFocusReason, qtcore.PopupFocusReason} {
+			qtcore.QCoreApplicationSendEvent(panes[0].GL, qtgui.NewQFocusEventWithTypeFull(qtcore.QEventFocusOut, reason))
+			if got := lit(); !slices.Equal(got, []bool{true, false}) {
+				t.Errorf("focus out (reason %d): %v", reason, got)
+			}
+		}
+		// The focus moved while the window was away: only the new pane is lit.
+		qtcore.QCoreApplicationSendEvent(panes[1].GL, qtgui.NewQFocusEventWithTypeFull(qtcore.QEventFocusIn, qtcore.ActiveWindowFocusReason))
+		if got := lit(); !slices.Equal(got, []bool{false, true}) {
+			t.Errorf("focus in on the other pane: %v", got)
+		}
+		// Qt's own focus never moved (the events were made up): move it for
+		// real, there and back.
+		for i, want := range [][]bool{{false, true}, {true, false}} {
+			panes[1-i].GL.SetFocus()
+			qutetest.WaitFor(func() bool { return slices.Equal(lit(), want) }, time.Second)
+			if got := lit(); !slices.Equal(got, want) {
+				t.Errorf("focus moved to pane %d: %v", 1-i, got)
 			}
 		}
 	})

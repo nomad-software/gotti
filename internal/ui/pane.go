@@ -497,17 +497,18 @@ func (p *Pane) event(ev *qtcore.QEvent) bool {
 	case qtcore.QEventWheel:
 		p.wheel(qtgui.QWheelEventCast(ev))
 		return true
-	case qtcore.QEventFocusIn:
-		p.focus(true)
-		return false
-	case qtcore.QEventFocusOut:
-		p.focus(false)
+	case qtcore.QEventFocusIn, qtcore.QEventFocusOut:
+		p.focus(ev.Type() == qtcore.QEventFocusIn, qtgui.QFocusEventCast(ev).Reason())
 		return false
 	}
 	return false
 }
 
-func (p *Pane) focus(in bool) {
+// focus notes the pane gaining or losing the keyboard focus. The header
+// keeps its colours when the focus goes to another window or to a menu or
+// dialog and comes back: changing them then would only flash, as the window
+// is painted again before the focus returns.
+func (p *Pane) focus(in bool, reason qtcore.FocusReason) {
 	p.view.Focused = in
 	p.view.BlinkOn = true
 	p.view.CursorDirty = true
@@ -524,7 +525,18 @@ func (p *Pane) focus(in bool) {
 	if in {
 		p.app.paneFocused(p)
 	}
-	p.setHeaderFocused(in)
+	switch w := p.tab.win; {
+	case in:
+		// The focus may have moved while the window was inactive, so the
+		// pane lit before never heard it go.
+		if prev := w.lit; prev != nil && prev != p && !prev.exited {
+			prev.setHeaderFocused(false)
+		}
+		w.lit = p
+		p.setHeaderFocused(true)
+	case reason != qtcore.ActiveWindowFocusReason && reason != qtcore.PopupFocusReason:
+		p.setHeaderFocused(false)
+	}
 	p.updateBlinkTimer()
 	p.GL.Update()
 }
@@ -537,7 +549,7 @@ func (p *Pane) modes() input.Modes {
 
 func (p *Pane) keyPress(qe *qtgui.QKeyEvent, release bool) bool {
 	// Escape while dragging a pane header ends the drag, not in the shell.
-	if qtcore.Key(qe.Key()) == qtcore.Key_Escape && p.tab.cancelDrag() {
+	if qe.Key() == qtcore.Key_Escape && p.tab.cancelDrag() {
 		return true
 	}
 	ev := translateKey(qe, release)
@@ -891,7 +903,7 @@ func (p *Pane) linkAt(at term.Pos) string {
 	p.T.Mu.Lock()
 	defer p.T.Mu.Unlock()
 	b := p.T.Buf()
-	if l, ok := b.LinkAt(at); ok {
+	if l, ok := p.T.LinkAt(at); ok {
 		return l.URI
 	}
 	if u, _, ok := b.URLAt(at); ok {
@@ -905,18 +917,8 @@ func (p *Pane) updateHover(at term.Pos) {
 	b := p.T.Buf()
 	var m term.Match
 	ok := false
-	if _, isLink := b.LinkAt(at); isLink {
-		// extend over neighbouring cells with the same link
-		line := b.LogicalLine(b.AbsToLogical(at.Line))
-		id := line[at.Col].Extra
-		s, e := at.Col, at.Col
-		for s > 0 && line[s-1].Extra == id {
-			s--
-		}
-		for e+1 < len(line) && line[e+1].Extra == id {
-			e++
-		}
-		m, ok = term.Match{Start: term.Pos{Line: at.Line, Col: s}, End: term.Pos{Line: at.Line, Col: e + 1}}, true
+	if lm, isLink := p.T.LinkExtent(at); isLink {
+		m, ok = lm, true
 	} else if _, um, found := b.URLAt(at); found {
 		m, ok = um, true
 	}
@@ -1012,7 +1014,7 @@ func (p *Pane) paste(text string) {
 	if input.IsMultiLine(text) && (warn == "always" || warn == "unbracketed" && !bracketed) {
 		lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
 		msg := fmt.Sprintf("You are pasting %d lines. They may run as commands.\n\nPaste anyway?", lines)
-		ok := ask(p.Widget, "Multi-line Paste", msg)
+		ok := qtwidgets.QMessageBoxQuestion(p.Widget, "Multi-line Paste", msg) == qtwidgets.QMessageBoxYes
 		if p.exited {
 			return
 		}
@@ -1043,7 +1045,7 @@ type searchBar struct {
 
 // KeyPressEvent overrides QWidget::keyPressEvent.
 func (s *searchBar) KeyPressEvent(ev *qtgui.QKeyEvent) {
-	switch qtcore.Key(ev.Key()) {
+	switch ev.Key() {
 	case qtcore.Key_Escape:
 		s.p.closeSearch()
 	case qtcore.Key_Return, qtcore.Key_Enter:

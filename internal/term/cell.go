@@ -89,24 +89,15 @@ type Extra struct {
 	Link    uint32 // hyperlink id (0 = none)
 }
 
-// intern tables shared by every terminal (cells from any pane may be
-// rendered by the same renderer, and the tables are append-only).
-var tables = struct {
-	mu        sync.RWMutex
-	clusters  []string
-	clusterIx map[string]uint32
-	extras    []Extra
-	extraIx   map[Extra]uint16
-	links     []Link
-	linkIx    map[Link]uint32
-}{
-	clusters:  []string{""},
-	clusterIx: map[string]uint32{},
-	extras:    []Extra{{}},
-	extraIx:   map[Extra]uint16{{}: 0},
-	links:     []Link{{}},
-	linkIx:    map[Link]uint32{},
-}
+// clusters is the grapheme cluster table. It is shared by every terminal
+// and append-only, as the glyph cache, which every pane shares, keys
+// clusters by their index. Underline colours and hyperlinks are interned
+// per terminal instead (extras.go).
+var clusters = struct {
+	mu   sync.RWMutex
+	list []string
+	ix   map[string]uint32
+}{list: []string{""}, ix: map[string]uint32{}}
 
 // Link is an OSC 8 hyperlink.
 type Link struct {
@@ -115,78 +106,25 @@ type Link struct {
 }
 
 func internCluster(s string) uint32 {
-	tables.mu.Lock()
-	defer tables.mu.Unlock()
-	if i, ok := tables.clusterIx[s]; ok {
+	clusters.mu.Lock()
+	defer clusters.mu.Unlock()
+	if i, ok := clusters.ix[s]; ok {
 		return i
 	}
-	i := uint32(len(tables.clusters))
-	tables.clusters = append(tables.clusters, s)
-	tables.clusterIx[s] = i
+	i := uint32(len(clusters.list))
+	clusters.list = append(clusters.list, s)
+	clusters.ix[s] = i
 	return i
 }
 
 // ClusterString returns the grapheme cluster with index i.
 func ClusterString(i uint32) string {
-	tables.mu.RLock()
-	defer tables.mu.RUnlock()
-	if int(i) < len(tables.clusters) {
-		return tables.clusters[i]
+	clusters.mu.RLock()
+	defer clusters.mu.RUnlock()
+	if int(i) < len(clusters.list) {
+		return clusters.list[i]
 	}
 	return ""
-}
-
-func internExtra(e Extra) uint16 {
-	if e == (Extra{}) {
-		return 0
-	}
-	tables.mu.Lock()
-	defer tables.mu.Unlock()
-	if i, ok := tables.extraIx[e]; ok {
-		return i
-	}
-	if len(tables.extras) >= 0xffff {
-		return 0 // table full; degrade gracefully
-	}
-	i := uint16(len(tables.extras))
-	tables.extras = append(tables.extras, e)
-	tables.extraIx[e] = i
-	return i
-}
-
-// ExtraOf returns the extras record for index i.
-func ExtraOf(i uint16) Extra {
-	if i == 0 {
-		return Extra{}
-	}
-	tables.mu.RLock()
-	defer tables.mu.RUnlock()
-	return tables.extras[i]
-}
-
-func internLink(l Link) uint32 {
-	if l.URI == "" {
-		return 0
-	}
-	tables.mu.Lock()
-	defer tables.mu.Unlock()
-	if i, ok := tables.linkIx[l]; ok {
-		return i
-	}
-	i := uint32(len(tables.links))
-	tables.links = append(tables.links, l)
-	tables.linkIx[l] = i
-	return i
-}
-
-// LinkOf returns the hyperlink with id i.
-func LinkOf(i uint32) Link {
-	tables.mu.RLock()
-	defer tables.mu.RUnlock()
-	if int(i) < len(tables.links) {
-		return tables.links[i]
-	}
-	return Link{}
 }
 
 // Text returns the text content of a cell ("" for empty or wide continuation).

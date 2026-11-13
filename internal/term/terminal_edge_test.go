@@ -111,8 +111,33 @@ func TestWordAtLinkAtOutside(t *testing.T) {
 		if s, e := b.WordAt(p, ""); s != p || e != p {
 			t.Errorf("WordAt col %d: %v %v", col, s, e)
 		}
-		if _, ok := b.LinkAt(p); ok {
+		if _, ok := tm.LinkAt(p); ok {
 			t.Errorf("LinkAt col %d found a link", col)
+		}
+		if _, ok := tm.LinkExtent(p); ok {
+			t.Errorf("LinkExtent col %d found a link", col)
+		}
+	}
+}
+
+// TestLinkExtent checks that a link's extent covers all of its cells,
+// also where its underline colour changes, and no others.
+func TestLinkExtent(t *testing.T) {
+	tm := feed(New(20, 2, 0), "ab\x1b]8;;http://x\x1b\\cd\x1b[58;5;1mef\x1b]8;;\x1b\\\x1b]8;;http://y\x1b\\g\x1b]8;;\x1b\\h")
+	b := tm.buf
+	line := int64(b.Count() - 2)
+	want := Match{Start: Pos{Line: line, Col: 2}, End: Pos{Line: line, Col: 6}}
+	for col := 2; col < 6; col++ {
+		if m, ok := tm.LinkExtent(Pos{Line: line, Col: col}); !ok || m != want {
+			t.Errorf("col %d: %v %v, want %v", col, m, ok, want)
+		}
+	}
+	if m, ok := tm.LinkExtent(Pos{Line: line, Col: 6}); !ok || m.Start.Col != 6 || m.End.Col != 7 {
+		t.Errorf("the next link: %v %v", m, ok)
+	}
+	for _, col := range []int{0, 1, 7} {
+		if _, ok := tm.LinkExtent(Pos{Line: line, Col: col}); ok {
+			t.Errorf("col %d has no link but has an extent", col)
 		}
 	}
 }
