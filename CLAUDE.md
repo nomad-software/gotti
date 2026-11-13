@@ -14,7 +14,7 @@ and architecture.
 - First build compiles qute's shims (minutes). Always run `gofmt -l .`,
   `go vet ./...`, `staticcheck ./...` (in `$GOPATH/bin`) and
   `go run github.com/nomad-software/qute/cmd/qute@<version in go.mod> vet ./...`.
-- GUI tests (`internal/ui/gui_test.go`: splits and focus, window title,
+- GUI tests (`internal/ui/gui_test.go`: splits and focus, window title, toolbar,
   options dialog, closing panes and windows, shells that fail to start)
   need an X display, as offscreen gives no GL
   context: `DISPLAY=:99 go test ./internal/ui` under Xvfb (they skip without
@@ -33,11 +33,11 @@ and architecture.
   folder outside the project (removed on exit) and leaves only
   `Termite-<version>-x86_64.AppImage` in the project folder. Never create a
   `build/` folder in the project. Releases come from
-  `.github/workflows/appimage.yml`, adapted from Prism's: `v` tags or by hand,
+  `.github/workflows/appimage.yml`: `v` tags or by hand,
   Ubuntu 22.04 container (glibc 2.35) with aqtinstall's Qt 6.12.0, tests
   first (under `xvfb-run`, so the GUI tests run), then the script. The
   script refuses to make an AppImage missing the xcb/Wayland/GL plugins or
-  the Qt OpenGL modules, or containing libGL/libEGL
+  the Qt OpenGL and SVG modules, or containing libGL/libEGL
   (the system's must be used), and starts the result under `xvfb-run` with
   Mesa's software GL (offscreen can't give termite a GL context).
 - `test/termite-headless -size 80x24 -script '...' -- prog` prints the screen of a
@@ -55,10 +55,34 @@ and architecture.
 - `internal/qtgl` the terminal's GL widget: a Go subclass of qute's
   QOpenGLWidget (GL callbacks, input events, IME queries); go-gl gets its GL
   functions through `QOpenGLContext.GetProcAddress`.
-- `internal/ui` windows/tabs/splits/panes, menu, options dialog (General,
-  User interface, Colours, Keyboard Shortcuts), pane headers, layouts.
+- `internal/ui` windows/tabs/splits/panes, menu, toolbar, options dialog
+  (General, User interface, Colours, Keyboard Shortcuts), pane headers,
+  layouts.
   `qtutil.go` has helpers for throwaway Qt values. Overrides of Qt virtuals
   are Go subclasses (`headerLabel`, `searchBar`, `windowWidget`).
+- Tabs (`tabbar.go`): a QTabWidget subclass so it can take a QTabBar
+  subclass that asks for the window's whole width and gives every tab the
+  same base width; with expanding on (after document mode, which turns it
+  off) the tabs share the bar equally. They are flat, styled by object name
+  from the window theme's palette (`palette(...)` in `applyTheme`), and Qt
+  elides their titles from the left. Their close buttons are termite's own
+  (`tabCloseButton`, the close icon, `tabCloseMargin` from the edge): Qt's
+  sits at the tab's edge whatever the stylesheet says, and styling it drops
+  its icon.
+- Toolbar (`toolbar.go`, hidden by `"toolbar": false`): a
+  QToolBar of 32px icons with text under them, a line along its bottom
+  painted in the text colour (`toolbarWidget`; styles draw none outside a
+  main window), buttons at least
+  `toolButtonWidth` (80) wide, kept in the desktop's style.
+  Its buttons run actions on the window's current pane, never take the
+  focus and show no tooltips (`tipFilter` takes the event); Exit (`exit` action) types `exit` + Enter into that pane alone, not broadcast. Icons are `internal/icons/svg/*.svg`, all in one outline style
+  (24 grid, `fill="none"`, `stroke="currentColor"` 1.5 wide, round caps and
+  joins, set on the root only; a test checks), drawn by `ui/icons.go`'s
+  icon engine in the palette's text colour each time, so they follow
+  `window_theme`. Draw new icons in the same style. Broadcast state
+  changes go through `App.setBroadcast` (or `refreshBroadcast`), which
+  updates the toolbars and the pane headers: a pane typing reaches has
+  the focused header colours (`updateHeaderActive`; there is no outline).
 - `internal/config` JSON config, `SetValues` writes, themes (`themes` in the
   file replaces the built-ins), key chords. The file is read at start-up
   only (and on `reload_config` or Options → OK/Apply); it is deliberately
@@ -98,6 +122,19 @@ and architecture.
 - Shells must not inherit the AppImage runtime's `APPIMAGE`, `APPDIR`,
   `ARGV0`, `OWD` (stripped in `pty.Start`), and `packaging/AppRun` must not
   add anything to the environment: everything in it reaches the shells.
+- `Session.Write` never blocks: the UI thread and the reader call it, and a
+  child that stops reading (raw mode) once filled a bounded channel and
+  froze every window. Input waits in a queue capped at `maxQueued`; beyond
+  it, it is dropped (`TestWriteNeverBlocks`).
+- Mouse reports follow the program's choice: SGR with ?1006, else X10
+  (`EncodeMouse(…, sgr)`, through `Pane.mouseReport`).
+- Ligatures are drawn only over cells with no cursor and no decorations
+  (`plainRun`): the ligature path skips the per-cell drawing.
+- Config: `Load` keeps what is valid when a value has the wrong type (only
+  a syntax error falls back to the defaults); `normalize` clamps sizes to
+  the ranges the Options dialog uses (`config.Min…/Max…`); `Validate`
+  reports unknown key names and actions sharing a chord. Start-up problems
+  reach the pane headers through `NewApp`'s `loadErr`.
 - Raw syscalls on the PTY (poll, ioctl) go through `Session.rc.Control`,
   never a saved descriptor number: Close may run concurrently and the
   number could be reused.

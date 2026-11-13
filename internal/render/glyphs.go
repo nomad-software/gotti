@@ -20,7 +20,6 @@ type FontSet struct {
 	faces [4]*qtgui.QFont
 	// metrics measures each face on img (the device glyphs are drawn on).
 	metrics [4]*qtgui.QFontMetricsF
-	DPR     float64
 
 	CellW, CellH int
 	Baseline     int // from cell top
@@ -37,7 +36,7 @@ type FontSet struct {
 
 // NewFontSet loads family at size points for the given device pixel ratio.
 func NewFontSet(family string, size, lineHeight, dpr float64) *FontSet {
-	fs := &FontSet{DPR: dpr}
+	fs := &FontSet{}
 	for st := 0; st < 4; st++ {
 		f := qtgui.NewQFont()
 		f.SetFamilies([]string{family, "monospace"})

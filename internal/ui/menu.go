@@ -69,7 +69,6 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 	// clipboard
 	b.item("Copy", "copy", run("copy")).SetEnabled(p.view.Sel.Active)
 	b.item("Paste", "paste", run("paste"))
-	b.item("Paste Selection", "paste_selection", run("paste_selection"))
 	if at != nil {
 		if url := p.linkAt(*at); url != "" {
 			menu.AddSeparator()
@@ -86,14 +85,17 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 
 	// broadcast
 	bc := b.sub("Broadcast Input")
-	bc.radio([]string{"Off", "All Panes in Tab", "Group"}, []int{BroadcastOff, BroadcastAll, BroadcastGroup}, a.broadcast, func(mode int) {
-		a.broadcast = mode
-		a.refreshBorders()
-	})
+	var labels []string
+	var modes []int
+	for _, m := range broadcastModes {
+		labels = append(labels, m.label)
+		modes = append(modes, m.mode)
+	}
+	bc.radio(labels, modes, a.broadcast, a.setBroadcast)
 	bc.m.AddSeparator()
 	bc.check("This Pane in Group", p.InGroup, func(on bool) {
 		p.InGroup = on
-		a.refreshBorders()
+		a.refreshBroadcast()
 	})
 
 	// layouts

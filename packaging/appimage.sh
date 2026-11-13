@@ -133,7 +133,7 @@ if [ -e "$THEMES/libqgtk3.so" ]; then
 fi
 
 # Without one of these the AppImage would be made, and then not start under
-# X11 or under Wayland, have no GL widget, or not look like a GTK desktop it
+# X11 or under Wayland, have no GL widget or toolbar icons, or not look like a GTK desktop it
 # is run on, so it is not made at all.
 missing=0
 for file in \
@@ -144,7 +144,8 @@ for file in \
 	plugins/xcbglintegrations/libqxcb-glx-integration.so \
 	plugins/platformthemes/libqgtk3.so \
 	lib/libQt6OpenGL.so.6 \
-	lib/libQt6OpenGLWidgets.so.6; do
+	lib/libQt6OpenGLWidgets.so.6 \
+	lib/libQt6Svg.so.6; do
 	# The pattern is left to match here, where it is not in quotes.
 	if ! ls "$APPDIR/usr/"$file >/dev/null 2>&1; then
 		echo "Missing from the AppImage: $file" >&2

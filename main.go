@@ -58,12 +58,13 @@ func main() {
 		go func() { fmt.Fprintln(os.Stderr, http.ListenAndServe(*pprofAddr, nil)) }()
 	}
 
-	cfg, err := config.Load(*cfgPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "termite:", err)
+	cfg, cfgErr := config.Load(*cfgPath)
+	if cfgErr != nil {
+		fmt.Fprintln(os.Stderr, "termite:", cfgErr)
 	}
 	var lf *ui.LayoutFile
 	if *layout != "" {
+		var err error
 		if lf, err = ui.LoadLayout(*layout); err != nil {
 			fatal(err)
 		}
@@ -91,17 +92,21 @@ func main() {
 	}
 
 	qute.Main(func() {
-		app := ui.NewApp(cfg, *cfgPath, flag.Args())
+		app := ui.NewApp(cfg, *cfgPath, cfgErr, flag.Args())
 		app.NewWindow(lf)
 	})
 	ui.FlushFrameStats()
 
 	if *memProfile != "" {
-		if f, err := os.Create(*memProfile); err == nil {
-			runtime.GC()
-			pprof.WriteHeapProfile(f)
-			f.Close()
+		f, err := os.Create(*memProfile)
+		if err != nil {
+			fatal(err)
 		}
+		runtime.GC()
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			fatal(err)
+		}
+		f.Close()
 	}
 }
 

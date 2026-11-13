@@ -16,11 +16,11 @@ import (
 var shortcutActions = []struct{ action, label string }{
 	{"copy", "Copy"},
 	{"paste", "Paste"},
-	{"paste_selection", "Paste selection"},
 	{"search", "Find"},
 	{"split_horizontal", "Split horizontally"},
 	{"split_vertical", "Split vertically"},
 	{"close_pane", "Close pane"},
+	{"exit", "Type exit into the pane"},
 	{"focus_left", "Focus pane to the left"},
 	{"focus_right", "Focus pane to the right"},
 	{"focus_up", "Focus pane above"},
@@ -55,7 +55,7 @@ var shortcutActions = []struct{ action, label string }{
 var qtKeyToChord = map[string]string{
 	"pgup": "pageup", "pgdown": "pagedown", "del": "delete", "ins": "insert", "esc": "escape",
 	"return": "enter", "enter": "enter", "backtab": "tab",
-	"=": "equal", "+": "plus", "-": "minus", ",": "comma", ".": "period", "/": "slash", "\\": "backslash",
+	"=": "equal", "+": "equal", "-": "minus", ",": "comma", ".": "period", "/": "slash", "\\": "backslash",
 	";": "semicolon", "'": "apostrophe", "[": "bracketleft", "]": "bracketright", "`": "grave",
 }
 
@@ -63,7 +63,7 @@ var chordKeyToQt = map[string]string{
 	"pageup": "PgUp", "pagedown": "PgDown", "delete": "Del", "insert": "Ins", "escape": "Esc",
 	"enter": "Return", "space": "Space", "menu": "Menu", "tab": "Tab", "backspace": "Backspace",
 	"home": "Home", "end": "End", "left": "Left", "right": "Right", "up": "Up", "down": "Down",
-	"equal": "=", "plus": "+", "minus": "-", "comma": ",", "period": ".", "slash": "/", "backslash": "\\",
+	"equal": "=", "minus": "-", "comma": ",", "period": ".", "slash": "/", "backslash": "\\",
 	"semicolon": ";", "apostrophe": "'", "bracketleft": "[", "bracketright": "]", "grave": "`",
 }
 

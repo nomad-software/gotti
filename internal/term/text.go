@@ -94,7 +94,7 @@ func isWordRune(r rune, extra string) bool {
 // soft wraps. extra lists punctuation treated as part of words.
 func (b *Buffer) WordAt(p Pos, extra string) (Pos, Pos) {
 	i := b.AbsToLogical(p.Line)
-	if i < 0 {
+	if i < 0 || p.Col < 0 || p.Col >= b.Cols {
 		return p, p
 	}
 	runeAt := func(line []Cell, x int) rune {
@@ -208,15 +208,19 @@ func (b *Buffer) Search(query string, caseSensitive bool) []Match {
 	q := []byte(query)
 	var out []Match
 	var text, lower []byte
-	var pos []Pos
+	var pos, lowerPos []Pos
 	for i := 0; i < b.count; {
 		var next int
 		text, pos, next = b.paragraph(i, text, pos)
-		hay := text
+		hay, hayPos := text, pos
 		if !caseSensitive {
 			lower = appendLower(lower[:0], text)
-			if len(lower) == len(text) { // else case mapping changed length
-				hay = lower
+			hay = lower
+			if len(lower) != len(text) {
+				// Lowercasing changed the length (as for the Kelvin sign):
+				// map each byte of the lowered text to its cell again.
+				lower, lowerPos = appendLowerMapped(lower[:0], lowerPos[:0], text, pos)
+				hay, hayPos = lower, lowerPos
 			}
 		}
 		off := 0
@@ -227,14 +231,30 @@ func (b *Buffer) Search(query string, caseSensitive bool) []Match {
 			}
 			s := off + k
 			e := s + len(query)
-			endPos := pos[e-1]
+			endPos := hayPos[e-1]
 			endPos.Col++
-			out = append(out, Match{pos[s], endPos})
+			out = append(out, Match{hayPos[s], endPos})
 			off = e
 		}
 		i = next
 	}
 	return out
+}
+
+// appendLowerMapped appends s lower-cased to dst rune by rune, and to
+// dstPos the position of each byte written: that of the byte of s it came
+// from, from pos.
+func appendLowerMapped(dst []byte, dstPos []Pos, s []byte, pos []Pos) ([]byte, []Pos) {
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRune(s[i:])
+		n := len(dst)
+		dst = utf8.AppendRune(dst, unicode.ToLower(r))
+		for range len(dst) - n {
+			dstPos = append(dstPos, pos[i])
+		}
+		i += size
+	}
+	return dst, dstPos
 }
 
 // appendLower appends s lower-cased to dst, with an ASCII fast path.
@@ -287,7 +307,7 @@ func (b *Buffer) URLAt(p Pos) (string, Match, bool) {
 // LinkAt returns the OSC 8 hyperlink at screen-independent position p.
 func (b *Buffer) LinkAt(p Pos) (Link, bool) {
 	i := b.AbsToLogical(p.Line)
-	if i < 0 || p.Col >= b.Cols {
+	if i < 0 || p.Col < 0 || p.Col >= b.Cols {
 		return Link{}, false
 	}
 	c := b.LogicalLine(i)[p.Col]

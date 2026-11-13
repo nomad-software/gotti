@@ -100,9 +100,21 @@ func (p *Pane) repolishHeader() {
 	st.Polish(p.header)
 }
 
-// setHeaderFocused highlights the header of the focused pane.
+// setHeaderFocused notes whether the pane has the focus, and shows it.
 func (p *Pane) setHeaderFocused(on bool) {
-	setBoolProperty(p.header, "focused", on)
+	p.headerFocused = on
+	p.updateHeaderActive()
+}
+
+// updateHeaderActive gives the header the focused colours while the pane
+// has the focus, or while typing in another pane reaches it.
+func (p *Pane) updateHeaderActive() {
+	active := p.headerFocused || p.app.broadcastsTo(p)
+	if active == p.headerActive {
+		return
+	}
+	p.headerActive = active
+	setBoolProperty(p.header, "focused", active)
 	p.repolishHeader()
 }
 

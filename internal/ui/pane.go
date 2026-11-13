@@ -135,6 +135,8 @@ type Pane struct {
 	program       string // foreground program, shown in tab and window titles
 	headerPending atomic.Bool
 	headerProblem bool // the header is showing a config problem
+	headerFocused bool // the pane has the focus
+	headerActive  bool // the header has the focused colours
 }
 
 // NewPane creates a pane and starts its process.
@@ -159,7 +161,6 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.GL = qtgl.New(p.Widget)
 	p.GL.SetSizePolicy(qtwidgets.NewQSizePolicyWithPolicy(qtwidgets.QSizePolicyExpanding, qtwidgets.QSizePolicyExpanding))
 	p.GL.SetMinimumSize(40, 20)
-	lay.AddWidget(p.searchBar)
 	row := qtwidgets.NewQHBoxLayout(nil)
 	row.SetContentsMargins(qtcore.QMargins{})
 	row.SetSpacing(0)
@@ -170,6 +171,7 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 	p.scrollbar.OnValueChanged(p.onScrollbar)
 	row.AddWidget(p.scrollbar)
 	lay.AddLayout(row)
+	lay.AddWidget(p.searchBar) // below the terminal
 	setCursorShape(p.GL, qtcore.IBeamCursor)
 
 	p.GL.OnInit = p.initGL
@@ -386,7 +388,6 @@ func (p *Pane) paint() {
 	fw, fh := p.fbSize()
 	p.R.SetFramebufferSize(fw, fh)
 	p.view.TopAbs = p.viewTop
-	p.view.Border = p.app.borderFor(p)
 	p.T.Mu.Lock()
 	p.R.Prepare(p.T, &p.view)
 	cx, cy := p.T.CursorPos()
@@ -594,6 +595,14 @@ func (p *Pane) mouseReporting(mods qtcore.KeyboardModifier) bool {
 	return p.T.MouseMode != term.MouseOff
 }
 
+// mouseReport sends a mouse event to the program, in the form it asked for.
+func (p *Pane) mouseReport(button, action, col, row int, mods qtcore.KeyboardModifier) {
+	p.T.Mu.Lock()
+	sgr := p.T.MouseSGR
+	p.T.Mu.Unlock()
+	p.S.Write(input.EncodeMouse(button, action, col, row, qtMods(mods), sgr))
+}
+
 func mouseButton(b qtcore.MouseButton) int {
 	switch b {
 	case qtcore.LeftButton:
@@ -617,7 +626,7 @@ func (p *Pane) mousePress(e *qtgui.QMouseEvent) {
 	}
 	if p.mouseReporting(mods) {
 		p.buttonsDown |= 1 << btn
-		p.S.Write(input.EncodeMouse(btn, input.MousePress, col, row, qtMods(mods)))
+		p.mouseReport(btn, input.MousePress, col, row, mods)
 		p.lastMouse = [2]int{col, row}
 		return
 	}
@@ -684,9 +693,9 @@ func (p *Pane) mouseMove(e *qtgui.QMouseEvent) {
 					break
 				}
 			}
-			p.S.Write(input.EncodeMouse(btn, input.MouseMotion, col, row, qtMods(mods)))
+			p.mouseReport(btn, input.MouseMotion, col, row, mods)
 		case p.buttonsDown == 0 && mode == term.MouseAny:
-			p.S.Write(input.EncodeMouse(input.MouseNone, input.MouseMotion, col, row, qtMods(mods)))
+			p.mouseReport(input.MouseNone, input.MouseMotion, col, row, mods)
 		}
 		return
 	}
@@ -759,7 +768,7 @@ func (p *Pane) mouseRelease(e *qtgui.QMouseEvent) {
 	btn := mouseButton(e.Button())
 	if btn >= 0 && p.buttonsDown&(1<<btn) != 0 {
 		p.buttonsDown &^= 1 << btn
-		p.S.Write(input.EncodeMouse(btn, input.MouseRelease, col, row, qtMods(e.Modifiers())))
+		p.mouseReport(btn, input.MouseRelease, col, row, e.Modifiers())
 		return
 	}
 	if btn == input.MouseLeft && p.selecting {
@@ -825,7 +834,7 @@ func (p *Pane) wheel(e *qtgui.QWheelEvent) {
 			btn = input.MouseWheelUp
 		}
 		for i := 0; i < max(1, n/3); i++ {
-			p.S.Write(input.EncodeMouse(btn, input.MousePress, col, row, qtMods(mods)))
+			p.mouseReport(btn, input.MousePress, col, row, mods)
 		}
 	case alt && altScroll:
 		k := "B"

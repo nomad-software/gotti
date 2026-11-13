@@ -39,9 +39,13 @@ type App struct {
 	defaultCmd []string
 }
 
-// NewApp creates the application controller.
-func NewApp(cfg *config.Config, cfgPath string, cmd []string) *App {
+// NewApp creates the application controller. loadErr is the problem
+// config.Load found with the file, if any, which the pane headers show.
+func NewApp(cfg *config.Config, cfgPath string, loadErr error, cmd []string) *App {
 	a := &App{cfg: cfg, cfgPath: cfgPath, caches: map[float64]*render.GlyphCache{}, fontScale: 1, defaultCmd: cmd}
+	if loadErr != nil {
+		a.configErr = loadErr.Error()
+	}
 	a.bindings = cfg.ParseBindings()
 	a.theme = cfg.ResolveTheme()
 	applyWindowTheme(cfg.WindowTheme)
@@ -93,6 +97,7 @@ func (a *App) reload(c *config.Config, err error) {
 	// layoutHeader elides with it.
 	for _, w := range a.windows {
 		w.applyTheme()
+		w.toolbar.update()
 	}
 	for _, p := range a.allPanes() {
 		a.applyTerminalSettings(p)
@@ -133,8 +138,7 @@ func (a *App) styleFor(p *Pane) render.Style {
 	th := a.theme
 	pad := int(math.Round(float64(a.cfg.Padding) * p.dpr))
 	return render.Style{
-		SelBg: th.Selection, SelFg: th.SelText, CursorText: th.CursorText,
-		MatchBg: config.Mix(th.Background, 0xb58900, 0.55), CurrentMatchBg: 0xcb4b16,
+		SelBg: th.Selection, SelFg: th.SelText, SelFgSet: th.HasSelText, CursorText: th.CursorText,
 		BoldIsBright: a.cfg.BoldIsBright, Ligatures: a.cfg.Ligatures,
 		CursorBlink: a.cfg.CursorBlink, PadX: pad, PadY: pad,
 	}
@@ -223,11 +227,6 @@ func (a *App) paneFocused(p *Pane) {
 	a.focused = p
 	p.tab.focused = p
 	p.tab.win.updateTitles()
-	if a.broadcast != BroadcastOff {
-		for _, q := range a.allPanes() {
-			q.GL.Update()
-		}
-	}
 }
 
 func (a *App) paneTitleChanged(p *Pane) { p.tab.win.updateTitles() }
@@ -278,25 +277,40 @@ func (a *App) inputTargets(p *Pane) []*Pane {
 	return []*Pane{p}
 }
 
-// borderFor returns the indicator border colour for a pane (RGBA).
-func (a *App) borderFor(p *Pane) uint32 {
-	red := uint32(0xdc) | 0x32<<8 | 0x2f<<16 | 0xff<<24
-	orange := uint32(0xcb) | 0x4b<<8 | 0x16<<16 | 0xff<<24
-	dimOrange := uint32(0xcb) | 0x4b<<8 | 0x16<<16 | 0x70<<24
-	switch {
-	case a.broadcast == BroadcastAll && a.focused != nil && a.focused.tab == p.tab:
-		return red
-	case a.broadcast == BroadcastGroup && p.InGroup:
-		return orange
-	case p.InGroup:
-		return dimOrange
+// broadcastsTo reports whether typing in a pane reaches p as well as the
+// pane typed in, which its header shows with the focused colours.
+func (a *App) broadcastsTo(p *Pane) bool {
+	switch a.broadcast {
+	case BroadcastAll:
+		return true
+	case BroadcastGroup:
+		return p.InGroup
 	}
-	return 0
+	return false
 }
 
-func (a *App) refreshBorders() {
+// setBroadcast sets the broadcast mode.
+func (a *App) setBroadcast(mode int) {
+	a.broadcast = mode
+	a.refreshBroadcast()
+}
+
+// toggleBroadcast turns the broadcast mode on, or off if it is on already.
+func (a *App) toggleBroadcast(mode int) {
+	if a.broadcast == mode {
+		mode = BroadcastOff
+	}
+	a.setBroadcast(mode)
+}
+
+// refreshBroadcast shows the broadcast state in the pane headers and the
+// toolbars.
+func (a *App) refreshBroadcast() {
 	for _, q := range a.allPanes() {
-		q.invalidate()
+		q.updateHeaderActive()
+	}
+	for _, w := range a.windows {
+		w.toolbar.update()
 	}
 }
 
@@ -311,14 +325,16 @@ func (a *App) runAction(p *Pane, action string) {
 		}
 	case "paste":
 		p.paste(qtgui.QGuiApplicationClipboard().Text())
-	case "paste_selection":
-		p.paste(qtgui.QGuiApplicationClipboard().TextFull(qtgui.QClipboardSelection))
 	case "new_tab":
 		w.NewTab(p.cwd(), a.defaultCmd)
 	case "new_window":
 		a.NewWindow(nil)
 	case "close_pane":
 		p.close()
+	case "exit":
+		// Typed into this pane only, even while input is broadcast.
+		p.S.WriteString("exit\r")
+		p.scrollToBottom()
 	case "split_horizontal":
 		a.split(p, qtcore.Vertical)
 	case "split_vertical":
@@ -359,22 +375,12 @@ func (a *App) runAction(p *Pane, action string) {
 		a.fontScale = 1
 		a.rebuildFonts()
 	case "broadcast_all":
-		if a.broadcast == BroadcastAll {
-			a.broadcast = BroadcastOff
-		} else {
-			a.broadcast = BroadcastAll
-		}
-		a.refreshBorders()
+		a.toggleBroadcast(BroadcastAll)
 	case "broadcast_group":
-		if a.broadcast == BroadcastGroup {
-			a.broadcast = BroadcastOff
-		} else {
-			a.broadcast = BroadcastGroup
-		}
-		a.refreshBorders()
+		a.toggleBroadcast(BroadcastGroup)
 	case "group_toggle":
 		p.InGroup = !p.InGroup
-		a.refreshBorders()
+		a.refreshBroadcast()
 	case "save_layout":
 		name, ok := qtwidgets.QInputDialogGetTextFull(w.w, "Save layout", "Layout name:", qtwidgets.QLineEditNormal, "", 0, 0)
 		if ok && name != "" {

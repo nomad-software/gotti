@@ -22,7 +22,8 @@ env:
   # already the first which can give a window its icon under Wayland, where a
   # window otherwise only has the icon of an installed desktop file, which an
   # AppImage does not have.) Its base already has the OpenGL and
-  # OpenGLWidgets modules termite's GL widget is built on.
+  # OpenGLWidgets modules termite's GL widget is built on, and the SVG module
+  # that draws the toolbar's icons.
   QT_VERSION: "6.12.0"
   QT_ROOT: /opt/qt/6.12.0/gcc_64
 
@@ -77,7 +78,7 @@ jobs:
           # remembering the place of another version.
           echo "CGO_LDFLAGS=-L$QT_ROOT/lib" >> "$GITHUB_ENV"
           # What the build is told about Qt, to read if it fails.
-          PKG_CONFIG_PATH="$QT_ROOT/lib/pkgconfig" pkg-config --modversion --cflags --libs Qt6Widgets Qt6OpenGLWidgets
+          PKG_CONFIG_PATH="$QT_ROOT/lib/pkgconfig" pkg-config --modversion --cflags --libs Qt6Widgets Qt6OpenGLWidgets Qt6Svg
 
       - uses: actions/checkout@v4
 

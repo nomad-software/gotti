@@ -37,7 +37,8 @@ type Theme struct {
 	Cursor     uint32
 	CursorText uint32
 	Selection  uint32 // selection background
-	SelText    uint32 // selection foreground (0 keeps text colours)
+	SelText    uint32 // selection foreground, if HasSelText
+	HasSelText bool   // otherwise selected text keeps its colours
 	// Pane header background and text, and the focused pane's.
 	HeaderBg, HeaderFg, HeaderFocusBg, HeaderFocusFg uint32
 	Palette                                          [16]uint32
@@ -84,8 +85,9 @@ var BuiltinThemes = map[string]ThemeSpec{
 	// Ubuntu's terminal look: Tango palette on the aubergine background
 	// used with the Ambiance desktop theme.
 	"ubuntu-ambiance": {
-		Name: "Ambiance", Foreground: "#ffffff", Background: "#300a24",
-		Cursor: "#ffffff", CursorText: "#300a24", Selection: "#5e2750", SelectionText: "#ffffff",
+		Name: "Ambience", Foreground: "#ffffff", Background: "#300a24",
+		Cursor: "#ffffff", CursorText: "#300a24", Selection: "#3465a4", SelectionText: "#ffffff",
+		HeaderFocusedBackground: "#aa0d0d",
 		Palette: []string{
 			"#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
 			"#555753", "#ef2929", "#8ae234", "#fce94f", "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec",
@@ -94,7 +96,7 @@ var BuiltinThemes = map[string]ThemeSpec{
 }
 
 // DefaultTheme is the theme used when none is configured.
-const DefaultTheme = "solarized-dark"
+const DefaultTheme = "ubuntu-ambiance"
 
 // Resolve parses the theme's colours.
 func (s ThemeSpec) Resolve() (Theme, error) {
@@ -120,6 +122,7 @@ func (s ThemeSpec) Resolve() (Theme, error) {
 	t.Selection = Mix(t.Background, t.Foreground, 0.25)
 	parse("selection", s.Selection, &t.Selection, true)
 	parse("selection_text", s.SelectionText, &t.SelText, true)
+	t.HasSelText = s.SelectionText != ""
 	t.HeaderBg = Mix(t.Background, 0x000000, 0.4)
 	parse("header_background", s.HeaderBackground, &t.HeaderBg, true)
 	t.HeaderFocusBg = t.HeaderBg

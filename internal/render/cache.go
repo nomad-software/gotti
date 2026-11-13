@@ -94,7 +94,7 @@ func (c *GlyphCache) textID(s string) rune {
 }
 
 // get returns the sprite for key, rasterizing it on first use. It returns
-// ok=false only if the glyph has no visible pixels.
+// ok=false if the glyph has no visible pixels, or doesn't fit in the atlas.
 func (c *GlyphCache) get(k glyphKey, text func() string) (Sprite, bool) {
 	if s, ok := c.m[k]; ok {
 		return s, s.W > 0

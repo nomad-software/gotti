@@ -38,12 +38,14 @@ vim).
   glyphs are drawn procedurally, so they join without gaps at any size.
 - **The modern protocols programs use.** Truecolor, every underline style
   and underline colours, OSC 8 hyperlinks, OSC 52 clipboard, OSC 7
-  directories, synchronized output (2026), bracketed paste, SGR mouse,
+  directories, synchronized output (2026), bracketed paste, SGR and X10 mouse,
   focus events and the kitty keyboard protocol.
-- **A workspace, not just a window.** Tabs and splits with
+- **A workspace, not just a window.** Flat tabs that share the window's
+  width, and splits with
   cursor-aligned Alt+Arrow navigation, input broadcast to a tab or a
-  group of panes, saved layouts that reopen each pane in its directory
-  and command, and pane headers that show where each shell is.
+  group of panes (their headers take the focused pane's colours), saved layouts that reopen each pane in its directory
+  and command, pane headers that show where each shell is, and a toolbar
+  (new window, new tab, splits, broadcast, options, exit) that can be hidden.
 - **Safe with what you paste and run.** Bracketed pastes can't be broken
   out of, multi-line pastes into programs that don't bracket them ask
   first, programs may set the clipboard but not read it unless you allow
@@ -97,20 +99,24 @@ at start-up. After editing it by hand, press Ctrl+Shift+R (`reload_config`)
 to apply the changes without a restart. `termite --write-config` writes every
 option with its default (to the `--config` path when one is given), and
 never overwrites an existing file. Settings saved from the Options dialog
-keep a symlinked config file a symlink, writing to the file it points at. Problems (misspelt keys, bad values, syntax
-errors with their line) are shown in red in every pane's header until the
-file is fixed; whatever is valid still applies.
+keep a symlinked config file a symlink, writing to the file it points at. Problems (misspelt keys, bad values, values
+of the wrong type, unknown key names, two actions on one shortcut, syntax
+errors with their line) are shown in red in every pane's header, from
+start-up, until the file is fixed; whatever is valid still applies (a file
+that isn't JSON at all falls back to the defaults). Sizes outside the
+Options dialog's ranges are brought within them.
 
 Most options can also be set in the **Options** dialog (right-click →
 Options…). Its General tab covers scrollback, copy on select, paste
 warning and OSC 52 clipboard access. Its User interface tab covers the
-window theme, font and size (any installed font, with a warning if it
-isn't monospaced), line height, padding, ligatures, bold-as-bright, the
+window theme, the toolbar, font and size (any installed font, with a warning if it
+isn't monospaced), the pane headers' font and size, line height, padding, ligatures, bold-as-bright, the
 scrollbar, and cursor style and blinking. Its Colours tab lists the colour
-themes: pick the one to use, edit its name, terminal and pane header
-colours and 16-colour palette with a live preview, add, duplicate or
+themes: pick the one to use, rename it (double-click it, press F2 or use
+Rename), edit its terminal and pane header colours (the search match shown
+is in its selection colours) and 16-colour palette with a live preview, add, duplicate or
 remove themes, and restore the built-in ones (Solarized Dark, Solarized
-Light, Ambiance). Its Keyboard Shortcuts tab rebinds every action:
+Light, Ambience). Its Keyboard Shortcuts tab rebinds every action:
 click a field, press the keys, or clear it to unbind. Shortcuts used by
 more than one action are reported and not saved. OK or Apply saves to
 `config.json` and applies at once. The window size and maximized state are
@@ -118,42 +124,46 @@ saved when a window closes and used for new windows.
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `font_family` | `"monospace"` | fallback and colour emoji come from Qt/fontconfig |
-| `font_size` | `11.0` | points |
-| `line_height` | `1.0` | multiplier |
-| `theme` | `"solarized-dark"` | id of the theme to use, a key of `themes` |
+| `font_family` | `"Iosevka Term Curly"` | falls back to `monospace` where it isn't installed; fallback and colour emoji come from Qt/fontconfig |
+| `font_size` | `15.0` | points, 5 to 72 |
+| `header_font_family` | `"Iosevka Term Curly"` | pane headers' font; empty uses `font_family` |
+| `header_font_size` | `12` | pane headers' size in points, 5 to 72; `0` is 85% of `font_size` |
+| `line_height` | `1.0` | multiplier, 0.8 to 2.5 |
+| `theme` | `"ubuntu-ambiance"` | id of the theme to use, a key of `themes` |
 | `window_theme` | `"system"` | `system`, `light`, `dark`: colours of the menus, dialogs and tab bar |
+| `toolbar` | `true` | show the toolbar (New Window, New Tab, Split Horizontally, Split Vertically, Broadcast, Options, Exit) above the tabs; Exit (Ctrl+W) types `exit` into the current pane only |
 | `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection`, `selection_text` and the pane header colours `header_background`, `header_focused_background`, `header_text` and `header_focused_text` are optional |
-| `scrollback` | `10000` | lines |
+| `scrollback` | `10000` | lines, up to 1,000,000 |
 | `cursor_style` | `"block"` | `block`, `beam`, `underline`; programs may choose another shape (DECSCUSR) until they reset it |
 | `cursor_blink` | `false` | allows blinking when an app requests it |
 | `copy_on_select` | `true` | primary selection is always set |
 | `paste_warning` | `"unbracketed"` | `always`, `unbracketed`, `never` |
 | `ligatures` | `false` | needs a font with ligatures |
 | `shell` | `$SHELL` | e.g. `["/bin/zsh", "-l"]` |
-| `padding` | `2` | logical pixels |
+| `padding` | `0` | logical pixels, up to 50 |
 | `osc52` | `"write"` | `off`, `write`, `read-write` |
 | `bold_is_bright` | `false` | |
 | `scrollbar` | `true` | show a scrollbar beside each pane |
 | `word_chars` | `"-_./~:@%+#=?&"` | extra word characters for double-click |
 | `window_width`, `window_height`, `window_maximized` | `900`, `560`, `false` | saved automatically |
-| `keybindings` | see below | `{"copy": "ctrl+shift+x"}`, or `"none"` to unbind |
+| `keybindings` | see below | `{"copy": "ctrl+shift+x"}`, or `"none"` to unbind. A shifted symbol is matched by the key it is on: `ctrl+plus` is Ctrl and the = key |
 
 ### Default keybindings
 
 | Action | Keys | Action | Keys |
 | --- | --- | --- | --- |
 | copy | Ctrl+Shift+C | paste | Ctrl+Shift+V |
-| paste_selection | Shift+Insert | search | Ctrl+Shift+F |
-| new_tab | Ctrl+Shift+T | new_window | Ctrl+Shift+N |
-| close_pane | Ctrl+Shift+W | split_vertical (Split Vertically: side by side) | Ctrl+Shift+E |
+| search | Ctrl+Shift+F | new_tab | Ctrl+Shift+T |
+| new_window | Ctrl+N | exit (types `exit` into the pane) | Ctrl+W |
+| close_pane | Ctrl+Shift+Q | split_vertical (Split Vertically: side by side) | Ctrl+Shift+E |
 | split_horizontal (Split Horizontally: stacked) | Ctrl+Shift+O | focus_up/down/left/right | Alt+Arrows |
 | next_tab / prev_tab | Ctrl+PgDn / Ctrl+PgUp | move_tab_left/right | Ctrl+Shift+PgUp/PgDn |
 | scroll_page_up/down | Shift+PgUp/PgDn | scroll_top/bottom | Shift+Home/End |
 | font_bigger/smaller/reset | Ctrl+= / Ctrl+- / Ctrl+0 | reload_config | Ctrl+Shift+R |
-| broadcast_all (panes in tab) | Ctrl+Shift+A | broadcast_group | Ctrl+Shift+B |
+| broadcast_all (panes in tab) | Ctrl+Shift+B | broadcast_group | unbound |
 | group_toggle (pane in group) | Ctrl+Shift+G | save_layout / load_layout | Ctrl+Shift+S / Ctrl+Shift+L |
-| context_menu | Menu key | options, clear_scrollback, reset_terminal, edit_config | unbound |
+| context_menu | Menu key | options | Ctrl+, |
+| clear_scrollback, reset_terminal, edit_config | unbound | | |
 
 Right-click opens the context menu (Shift+right-click while an
 application uses the mouse). It covers copy and paste, opening or copying
@@ -176,8 +186,9 @@ programs are ignored. A new pane made by splitting takes the keyboard focus.
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs
 and OSC 8 links (Ctrl+hover underlines them). Shift bypasses application
-mouse reporting. In search, Enter goes to older matches, Shift+Enter to
-newer ones, and Esc closes the search bar.
+mouse reporting. Find opens a search bar at the bottom of the pane and shows one match at a
+time, the newest first: Enter goes to the next older match, Shift+Enter to
+the next newer one, and Esc closes the search bar.
 
 Layouts are saved as JSON under `~/.config/termite/layouts/`, recording the
 split tree, sizes, each pane's working directory and command for every tab.
@@ -234,7 +245,8 @@ internal/pty         child process on a PTY; one reader+parser goroutine per pan
 internal/input       key (xterm + kitty), mouse (SGR) and paste encoding
 internal/render      glyph atlas, procedural box drawing, OpenGL renderer
 internal/qtgl        the terminal's QOpenGLWidget, a Go subclass of qute's
-internal/ui          windows, tabs, splits, panes, layouts, actions
+internal/ui          windows, toolbar, tabs, splits, panes, layouts, actions
+internal/icons       toolbar icons as embedded SVG (no Qt)
 internal/config      JSON config, in-place setting writes, themes, key chords
 internal/desktop     desktop entry and icon install
 internal/appicon     embedded program icon
@@ -268,7 +280,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
-DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, focus, title, options, closing, failed starts), under Xvfb
+DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, focus, title, toolbar, options, closing, failed starts), under Xvfb
 make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)

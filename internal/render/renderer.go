@@ -2,7 +2,6 @@ package render
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"unsafe"
 
@@ -44,13 +43,12 @@ type View struct {
 	TopAbs      int64 // absolute line shown in row 0; <0 follows the bottom
 	Sel         Selection
 	Matches     []term.Match
-	Current     int // index of the focused search match, -1 none
+	Current     int // index of the search match shown, -1 none
 	Hover       term.Match
 	HoverActive bool
 	Focused     bool
 	BlinkOn     bool
 	Preedit     string
-	Border      uint32 // RGBA border colour (0 = none)
 
 	Dirty       bool // selection/search/hover/focus changed: rebuild all
 	CursorDirty bool // only the cursor needs redrawing (blink)
@@ -58,14 +56,13 @@ type View struct {
 
 // Style holds theme values the terminal doesn't know about.
 type Style struct {
-	SelBg, SelFg   uint32 // 0xRRGGBB; SelFg 0 keeps text colours
-	CursorText     uint32
-	MatchBg        uint32
-	CurrentMatchBg uint32
-	BoldIsBright   bool
-	Ligatures      bool
-	CursorBlink    bool // allow blinking
-	PadX, PadY     int
+	SelBg, SelFg uint32 // 0xRRGGBB, also of the current search match
+	SelFgSet     bool   // SelFg is used; otherwise selected text keeps its colours
+	CursorText   uint32
+	BoldIsBright bool
+	Ligatures    bool
+	CursorBlink  bool // allow blinking
+	PadX, PadY   int
 }
 
 // Renderer draws one terminal into a GL framebuffer.
@@ -157,7 +154,9 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
 		r.rowAbs = make([]int64, rows)
 		r.rowDirty = make([]bool, rows)
 		r.rectSlot = cols + 1
-		r.glyphSlot = cols*3 + 4
+		// Each cell can draw a glyph, an underline, a strike and an
+		// overline, and the row one cursor.
+		r.glyphSlot = cols*4 + 5
 		r.rects = make([]rectInst, rows*r.rectSlot+overlayRects)
 		r.glyphs = make([]glyphInst, rows*r.glyphSlot+cols*2+8)
 		r.rowRects = make([]int, rows+1)
@@ -351,7 +350,7 @@ var shared struct {
 }
 
 func initPrograms() error {
-	if shared.progRect != 0 && gl.IsProgram(shared.progRect) {
+	if shared.progRect != 0 && shared.progGlyph != 0 && gl.IsProgram(shared.progRect) {
 		return nil
 	}
 	var err error
@@ -359,6 +358,9 @@ func initPrograms() error {
 		return err
 	}
 	if shared.progGlyph, err = compile(glyphVS, glyphFS); err != nil {
+		// Both or neither: the next pane tries again from the start.
+		gl.DeleteProgram(shared.progRect)
+		shared.progRect = 0
 		return err
 	}
 	shared.uVPRect = gl.GetUniformLocation(shared.progRect, gl.Str("viewport\x00"))
@@ -490,31 +492,11 @@ func inMatch(m term.Match, abs int64, x int) bool {
 	return !p.Less(m.Start) && p.Less(m.End)
 }
 
-// matchCursor finds the search match under each cell of a row as x
-// increases. Matches are sorted and don't overlap, so it only moves forward
-// and costs O(1) per cell however many matches there are.
-type matchCursor struct {
-	ms  []term.Match
-	i   int
-	abs int64
-}
-
-func newMatchCursor(ms []term.Match, abs int64) matchCursor {
-	// The first match that ends on or after this row.
-	i := sort.Search(len(ms), func(i int) bool { return ms[i].End.Line >= abs })
-	return matchCursor{ms: ms, i: i, abs: abs}
-}
-
-// at returns the index of the match covering column x, or -1.
-func (m *matchCursor) at(x int) int {
-	p := term.Pos{Line: m.abs, Col: x}
-	for m.i < len(m.ms) && !p.Less(m.ms[m.i].End) {
-		m.i++
-	}
-	if m.i < len(m.ms) && !p.Less(m.ms[m.i].Start) {
-		return m.i
-	}
-	return -1
+// inCurrentMatch reports whether the cell is in the current search match,
+// the only one shown: Enter in the search bar moves to the next.
+func (r *Renderer) inCurrentMatch(abs int64, x int) bool {
+	c := r.view.Current
+	return c >= 0 && c < len(r.view.Matches) && inMatch(r.view.Matches[c], abs, x)
 }
 
 var ligatureCandidates = []string{
@@ -572,7 +554,6 @@ func (r *Renderer) buildRow(y int) {
 			g.Flags = 0
 		}
 	}
-	matches := newMatchCursor(r.view.Matches, abs)
 	addRect := func(px, w int, color uint32) {
 		if nr > 0 {
 			last := &rects[nr-1]
@@ -606,19 +587,11 @@ func (r *Renderer) buildRow(y int) {
 		if c.Attr&term.AttrDim != 0 {
 			fg = mix(fg, bg, 0.45)
 		}
-		if r.inSelection(abs, x) {
+		// The current search match looks like the selection.
+		if r.inSelection(abs, x) || r.inCurrentMatch(abs, x) {
 			bg = r.Style.SelBg
-			if r.Style.SelFg != 0 {
+			if r.Style.SelFgSet {
 				fg = r.Style.SelFg
-			}
-		} else if len(r.view.Matches) > 0 {
-			if i := matches.at(x); i >= 0 {
-				if i == r.view.Current {
-					bg = r.Style.CurrentMatchBg
-				} else {
-					bg = r.Style.MatchBg
-				}
-				fg = r.defBg
 			}
 		}
 		isCursor := cursorHere && x == r.curX
@@ -649,13 +622,16 @@ func (r *Renderer) buildRow(y int) {
 			}
 			// optional ligatures over runs of ASCII punctuation
 			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 && ligatureStart[c.Ch] {
-				if n, s := r.ligatureAt(line, x, style); n > 1 {
+				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, abs, x, n, cursorHere) {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them
 					for k := 1; k < n; k++ {
 						cc := line[x+k]
 						b2 := r.resolve(cc.Bg, false, false)
-						if r.inSelection(abs, x+k) {
+						if cc.Attr&term.AttrInverse != 0 {
+							b2 = r.resolve(cc.Fg, true, bold)
+						}
+						if r.inSelection(abs, x+k) || r.inCurrentMatch(abs, x+k) {
 							b2 = r.Style.SelBg
 						}
 						if b2 != defBg {
@@ -732,6 +708,24 @@ func (r *Renderer) buildRow(y int) {
 	}
 }
 
+// plainRun reports whether the n cells from x can be drawn as one ligature:
+// a ligature skips the per-cell work, so none of them may have the cursor or
+// a line drawn over or under it.
+func (r *Renderer) plainRun(line []term.Cell, abs int64, x, n int, cursorHere bool) bool {
+	if cursorHere && r.curX >= x && r.curX < x+n {
+		return false
+	}
+	for k := x; k < x+n; k++ {
+		c := line[k]
+		if c.Attr.Underline() != 0 || c.Attr&(term.AttrStrike|term.AttrOverline) != 0 ||
+			c.Extra != 0 && term.ExtraOf(c.Extra).Link != 0 ||
+			r.view.HoverActive && inMatch(r.view.Hover, abs, k) {
+			return false
+		}
+	}
+	return true
+}
+
 func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite) {
 	for _, cand := range ligatureCandidates {
 		n := len(cand)
@@ -758,7 +752,7 @@ func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite
 	return 0, Sprite{}
 }
 
-// buildOverlay fills the overlay slots: border and IME preedit.
+// buildOverlay fills the overlay slots: the IME preedit.
 func (r *Renderer) buildOverlay() {
 	fs := r.Cache.Fonts
 	cw, ch := fs.CellW, fs.CellH
@@ -771,13 +765,6 @@ func (r *Renderer) buildOverlay() {
 			ov[n] = rectInst{int16(x), int16(y), int16(w), int16(h), c}
 			n++
 		}
-	}
-	if b := r.view.Border; b != 0 {
-		t := max(2, cw/4)
-		add(0, 0, r.fbW, t, b)
-		add(0, r.fbH-t, r.fbW, t, b)
-		add(0, 0, t, r.fbH, b)
-		add(r.fbW-t, 0, t, r.fbH, b)
 	}
 	gbase := r.rows * r.glyphSlot
 	gov := r.glyphs[gbase:]

@@ -31,7 +31,14 @@ type Session struct {
 	// call after Close fails rather than touching another file.
 	rc syscall.RawConn
 
-	writes chan *[]byte
+	// Input for the child waits in queue (queued bytes in all) for the
+	// writer goroutine, which wake tells of more. Write never blocks: the
+	// UI thread and the reader call it, and a child that stops reading
+	// would otherwise stop them both.
+	mu     sync.Mutex
+	queue  [][]byte
+	queued int
+	wake   chan struct{}
 	done   chan struct{}
 	closed atomic.Bool
 
@@ -42,7 +49,9 @@ type Session struct {
 	OnExit func()
 }
 
-var bufPool = sync.Pool{New: func() any { b := make([]byte, 0, 512); return &b }}
+// maxQueued is the most input held for a child that isn't reading it;
+// beyond it more is dropped, as the kernel would hold no more either.
+const maxQueued = 1 << 20
 
 // Options configure a new session.
 type Options struct {
@@ -99,7 +108,7 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 		f.Close()
 		return nil, err
 	}
-	s := &Session{T: t, cmd: cmd, f: f, rc: rc, writes: make(chan *[]byte, 1024), done: make(chan struct{})}
+	s := &Session{T: t, cmd: cmd, f: f, rc: rc, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	return s, nil
 }
 
@@ -158,9 +167,21 @@ func (s *Session) reader() {
 func (s *Session) writer() {
 	for {
 		select {
-		case b := <-s.writes:
-			data := *b
-			for len(data) > 0 {
+		case <-s.wake:
+		case <-s.done:
+			return
+		}
+		for {
+			s.mu.Lock()
+			if len(s.queue) == 0 {
+				s.mu.Unlock()
+				break
+			}
+			b := s.queue[0]
+			s.queue[0] = nil
+			s.queue = s.queue[1:]
+			s.mu.Unlock()
+			for data := b; len(data) > 0; {
 				n, err := s.f.Write(data)
 				if err != nil {
 					if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
@@ -170,10 +191,9 @@ func (s *Session) writer() {
 				}
 				data = data[n:]
 			}
-			*b = (*b)[:0]
-			bufPool.Put(b)
-		case <-s.done:
-			return
+			s.mu.Lock()
+			s.queued -= len(b)
+			s.mu.Unlock()
 		}
 	}
 }
@@ -190,17 +210,23 @@ func (s *Session) finish() {
 	}
 }
 
-// Write queues input for the child. It never blocks the caller for long
-// (it may block if over 1024 writes are pending).
+// Write queues input for the child. It never blocks: input beyond
+// maxQueued waiting for a child that isn't reading is dropped.
 func (s *Session) Write(p []byte) {
 	if s.closed.Load() || len(p) == 0 {
 		return
 	}
-	b := bufPool.Get().(*[]byte)
-	*b = append((*b)[:0], p...)
+	s.mu.Lock()
+	if s.queued+len(p) > maxQueued {
+		s.mu.Unlock()
+		return
+	}
+	s.queue = append(s.queue, append([]byte(nil), p...))
+	s.queued += len(p)
+	s.mu.Unlock()
 	select {
-	case s.writes <- b:
-	case <-s.done:
+	case s.wake <- struct{}{}:
+	default: // the writer has been told already
 	}
 }
 

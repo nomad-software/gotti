@@ -99,6 +99,7 @@ type Terminal struct {
 	CursorStyle    int  // shape to draw: the program's choice, else defaultCursor
 	CursorBlink    bool // the program asked for a blinking cursor
 	defaultCursor  int  // the user's preferred shape (cursor_style)
+	programCursor  bool // a program chose CursorStyle with DECSCUSR 1-6
 	BracketedPaste bool
 	MouseMode      int
 	MouseSGR       bool
@@ -135,6 +136,7 @@ type Terminal struct {
 
 // New creates a terminal of the given size.
 func New(cols, rows, scrollback int) *Terminal {
+	cols, rows = max(cols, 2), max(rows, 1) // as Resize: a wide character needs two columns
 	t := &Terminal{cols: cols, rows: rows, scrollback: scrollback}
 	t.primary = NewBuffer(cols, rows, scrollback)
 	t.alt = NewBuffer(cols, rows, 0)
@@ -156,7 +158,7 @@ func (t *Terminal) reset() {
 	t.Autowrap = true
 	t.Insert, t.NewlineMode, t.ReverseVideo = false, false, false
 	t.CursorVisible = true
-	t.CursorStyle, t.CursorBlink = t.defaultCursor, false
+	t.CursorStyle, t.CursorBlink, t.programCursor = t.defaultCursor, false, false
 	t.BracketedPaste = false
 	t.MouseMode, t.MouseSGR, t.FocusEvents = MouseOff, false, false
 	t.AltScroll, t.SyncOutput = false, false
@@ -176,7 +178,7 @@ func (t *Terminal) resetTabs() {
 // SetDefaultCursor sets the cursor shape used until a program chooses one
 // with DECSCUSR, and again after it resets it (CSI 0 SP q).
 func (t *Terminal) SetDefaultCursor(style int) {
-	if t.CursorStyle == t.defaultCursor {
+	if !t.programCursor {
 		t.CursorStyle = style // the program hasn't chosen: follow the setting
 	}
 	t.defaultCursor = style
@@ -430,13 +432,16 @@ func (t *Terminal) printRune(r rune) {
 }
 
 // clearWideAt removes the other half of a wide character overlapping x.
+// blankCell blanks a cell, keeping its colours.
+func blankCell(c *Cell) { *c = Cell{Fg: c.Fg, Bg: c.Bg} }
+
 func (t *Terminal) clearWideAt(line []Cell, x int) {
 	c := line[x]
 	if c.Attr&AttrWideCont != 0 && x > 0 {
-		line[x-1] = Cell{Fg: line[x-1].Fg, Bg: line[x-1].Bg}
+		blankCell(&line[x-1])
 	}
 	if c.Attr&AttrWide != 0 && x+1 < len(line) {
-		line[x+1] = Cell{Fg: line[x+1].Fg, Bg: line[x+1].Bg}
+		blankCell(&line[x+1])
 	}
 }
 
@@ -646,6 +651,7 @@ func (t *Terminal) eraseDisplay(mode int) {
 	switch mode {
 	case 0:
 		t.eraseCells(t.cur.Y, t.cur.X, t.cols)
+		t.buf.SetWrapped(t.cur.Y, false) // as EL 0
 		for y := t.cur.Y + 1; y < t.rows; y++ {
 			t.eraseCells(y, 0, t.cols)
 			t.buf.SetWrapped(y, false)
@@ -662,7 +668,7 @@ func (t *Terminal) eraseDisplay(mode int) {
 			t.buf.SetWrapped(y, false)
 		}
 	case 3:
-		t.buf.ClearScrollback()
+		t.ClearScrollback() // the normal screen's, also from the alternate one
 	}
 	t.cur.wrapPending = false
 }
@@ -685,7 +691,11 @@ func (t *Terminal) insertBlanks(n int) {
 	line := t.buf.Line(t.cur.Y)
 	x := t.cur.X
 	n = min(n, t.cols-x)
-	t.clearWideAt(line, x)
+	// A wide character at x moves right whole; one split by x goes.
+	if line[x].Attr&AttrWideCont != 0 {
+		blankCell(&line[x-1])
+		blankCell(&line[x])
+	}
 	copy(line[x+n:], line[x:t.cols-n])
 	f := t.fill()
 	for i := x; i < x+n; i++ {
@@ -702,9 +712,13 @@ func (t *Terminal) deleteChars(n int) {
 	line := t.buf.Line(t.cur.Y)
 	x := t.cur.X
 	n = min(n, t.cols-x)
-	t.clearWideAt(line, x)
-	if x+n < t.cols {
-		t.clearWideAt(line, x+n)
+	// A wide character split by either end of the deleted cells goes: its
+	// left half stays at x-1, or its right half moves to x.
+	if line[x].Attr&AttrWideCont != 0 {
+		blankCell(&line[x-1])
+	}
+	if x+n < t.cols && line[x+n].Attr&AttrWideCont != 0 {
+		blankCell(&line[x+n])
 	}
 	copy(line[x:], line[x+n:])
 	f := t.fill()
@@ -1050,13 +1064,13 @@ func (t *Terminal) csiInter(inter, final byte) {
 		n := ps.Raw(0, 0)
 		switch n {
 		case 0: // back to the user's default
-			t.CursorStyle = t.defaultCursor
+			t.CursorStyle, t.programCursor = t.defaultCursor, false
 		case 1, 2:
-			t.CursorStyle = CursorBlock
+			t.CursorStyle, t.programCursor = CursorBlock, true
 		case 3, 4:
-			t.CursorStyle = CursorUnderline
+			t.CursorStyle, t.programCursor = CursorUnderline, true
 		case 5, 6:
-			t.CursorStyle = CursorBeam
+			t.CursorStyle, t.programCursor = CursorBeam, true
 		}
 		t.CursorBlink = n%2 == 1
 		t.events |= EvCursorStyle

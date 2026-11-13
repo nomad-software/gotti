@@ -17,10 +17,11 @@ import (
 
 // Window is a top-level window with tabs.
 type Window struct {
-	app  *App
-	w    *qtwidgets.QWidget
-	tabs *qtwidgets.QTabWidget
-	list []*Tab
+	app     *App
+	w       *qtwidgets.QWidget
+	toolbar *toolbar
+	tabs    *qtwidgets.QTabWidget
+	list    []*Tab
 }
 
 func newWindow(a *App) *Window {
@@ -36,28 +37,21 @@ func newWindow(a *App) *Window {
 	w.w.Resize(width, height)
 	lay := qtwidgets.NewQVBoxLayout(w.w)
 	lay.SetContentsMargins(qtcore.QMargins{})
-	w.tabs = qtwidgets.NewQTabWidget(w.w)
-	w.tabs.SetObjectName("termiteTabs")
-	w.tabs.TabBar().SetObjectName("termiteTabBar")
+	lay.SetSpacing(0)
+	w.tabs = newTabWidget(w.w)
 	w.tabs.SetMovable(true)
-	w.tabs.SetTabsClosable(true)
-	w.tabs.SetDocumentMode(true)
 	w.tabs.SetTabBarAutoHide(true)
 	w.tabs.SetFocusPolicy(qtcore.NoFocus)
 	w.tabs.TabBar().SetFocusPolicy(qtcore.NoFocus)
+	w.toolbar = newToolbar(w)
+	lay.AddWidget(w.toolbar.bar)
 	lay.AddWidget(w.tabs)
-	w.tabs.OnTabCloseRequested(func(i int) {
-		if t := w.tabAt(i); t != nil {
-			for _, p := range t.Panes() {
-				p.close()
-			}
-		}
-	})
 	w.tabs.OnCurrentChanged(func(i int) {
 		if t := w.tabAt(i); t != nil && t.focused != nil {
 			t.focused.GL.SetFocus()
 		}
 		w.updateTitles()
+		w.toolbar.update()
 	})
 	w.applyTheme()
 	return w
@@ -85,14 +79,13 @@ func (ww *windowWidget) CloseEvent(ev *qtgui.QCloseEvent) {
 	w.w.DeleteLater()
 }
 
-// headerFontScale sizes the pane header font relative to the terminal's.
-const headerFontScale = 0.85
-
 func (w *Window) applyTheme() {
 	th := w.app.theme
+	family, size := w.app.cfg.HeaderFont()
 	hex := func(c uint32) string { return fmt.Sprintf("#%06x", c) }
 	// The rules name termite's own widgets only, so menus and dialogs keep
-	// the desktop's native look.
+	// the desktop's native look. The tabs are flat, in the colours of the
+	// window theme's palette.
 	w.w.SetStyleSheet(strings.NewReplacer(
 		"$bg", hex(th.Background),
 		"$fg", hex(th.Foreground),
@@ -101,10 +94,18 @@ func (w *Window) applyTheme() {
 		"$headerFg", hex(th.HeaderFg),
 		"$focusBg", hex(th.HeaderFocusBg),
 		"$focusFg", hex(th.HeaderFocusFg),
-		"$font", strconv.Quote(w.app.cfg.FontFamily),
-		"$size", strconv.FormatFloat(w.app.cfg.FontSize*headerFontScale, 'f', 1, 64),
+		"$font", strconv.Quote(family),
+		"$size", strconv.FormatFloat(size, 'f', 1, 64),
 	).Replace(`
 		QWidget#termitePane { background: $bg; }
+		QTabBar#termiteTabBar { background: palette(window); }
+		QTabBar#termiteTabBar::tab {
+			background: palette(window); color: palette(window-text);
+			border: none; border-bottom: 2px solid palette(mid);
+			padding: 6px 8px; margin: 0;
+		}
+		QTabBar#termiteTabBar::tab:hover:!selected { background: palette(button); }
+		QTabBar#termiteTabBar::tab:selected { background: palette(base); border-bottom-color: palette(highlight); }
 		QLineEdit#termiteSearch { background: $bg; color: $fg; border: 1px solid $sel; padding: 3px; }
 		QLineEdit#termiteSearch[notFound="true"] { color: #dc322f; }
 		QLabel#termiteHeader { background: $headerBg; color: $headerFg; padding: 2px 10px; font-family: $font; font-size: $sizept; }
@@ -121,15 +122,29 @@ func (w *Window) allPanes() []*Pane {
 	return out
 }
 
+// tabAt returns the tab at index i, or nil. While a tab is moved Qt takes
+// its page out and puts it back, and the focus leaving its terminal in
+// between asks for an index that has no page.
 func (w *Window) tabAt(i int) *Tab {
 	if i < 0 || i >= w.tabs.Count() {
 		return nil
 	}
 	wd := w.tabs.Widget(i)
+	if wd == nil {
+		return nil
+	}
 	for _, t := range w.list {
 		if t.container.Ptr() == wd.Ptr() {
 			return t
 		}
+	}
+	return nil
+}
+
+// currentPane returns the focused pane of the current tab, or nil.
+func (w *Window) currentPane() *Pane {
+	if t := w.tabAt(w.tabs.CurrentIndex()); t != nil {
+		return t.focused
 	}
 	return nil
 }
@@ -149,9 +164,17 @@ func (w *Window) NewTab(cwd string, cmd []string) *Tab {
 	t.focused = p
 	w.list = append(w.list, t)
 	idx := w.tabs.AddTab(t.container, desktop.DisplayName)
+	w.tabs.TabBar().SetTabButton(idx, qtwidgets.QTabBarRightSide, tabCloseButton(func() { w.closeTab(t) }))
 	w.tabs.SetCurrentIndex(idx)
 	p.GL.SetFocus()
 	return t
+}
+
+// closeTab closes the tab's panes, and with the last of them the tab.
+func (w *Window) closeTab(t *Tab) {
+	for _, p := range t.Panes() {
+		p.close()
+	}
 }
 
 func (w *Window) addLayoutTab(ln LayoutNode) {
@@ -182,9 +205,7 @@ func (w *Window) loadLayout(lf *LayoutFile) {
 		return // nothing opened: keep the current tabs
 	}
 	for _, t := range old {
-		for _, p := range t.Panes() {
-			p.close()
-		}
+		w.closeTab(t)
 	}
 	w.tabs.SetCurrentIndex(first)
 }
@@ -219,12 +240,11 @@ func (w *Window) updateTitles() {
 			continue
 		}
 		title := p.tabTitle()
-		short := title
-		if r := []rune(short); len(r) > 30 {
-			short = "…" + string(r[len(r)-29:]) // keep the end, like the header
-		}
 		i := w.indexOf(t)
-		w.tabs.SetTabText(i, short)
+		if i < 0 {
+			continue // its page is out while it moves
+		}
+		w.tabs.SetTabText(i, title) // the bar elides it, keeping the end
 		w.tabs.SetTabToolTip(i, title)
 	}
 }
@@ -261,6 +281,11 @@ func (w *Window) moveTab(d int) {
 		return
 	}
 	w.tabs.TabBar().MoveTab(i, j)
+	// The move took the focus from the tab's terminal: give it back.
+	if p := w.currentPane(); p != nil {
+		p.GL.SetFocus()
+	}
+	w.updateTitles()
 }
 
 func paneRect(p *Pane) rect {

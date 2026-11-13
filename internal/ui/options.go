@@ -68,6 +68,9 @@ func (a *App) showOptions(p *Pane) {
 	windowTheme := newChoice(win, []string{"Light", "Dark", "Follow the system"},
 		[]string{"light", "dark", "system"}, cfg.WindowTheme)
 	wf.AddRowText("Theme:", windowTheme.box)
+	toolbar := qtwidgets.NewQCheckBoxWithText("Show the toolbar", nil)
+	toolbar.SetChecked(cfg.Toolbar)
+	wf.AddRowText("", toolbar)
 
 	// ---- appearance
 	look, lf := optionsSection(ul, "Appearance", "")
@@ -78,7 +81,7 @@ func (a *App) showOptions(p *Pane) {
 	font.SetFontFilters(qtwidgets.QFontComboBoxScalableFonts)
 	font.SetCurrentFont(qtgui.NewQFontWithFamily(cfg.FontFamily))
 	size := qtwidgets.NewQDoubleSpinBox(look)
-	size.SetRange(5, 72)
+	size.SetRange(config.MinFontSize, config.MaxFontSize)
 	size.SetDecimals(1)
 	size.SetSingleStep(0.5)
 	size.SetSuffix(" pt")
@@ -96,14 +99,39 @@ func (a *App) showOptions(p *Pane) {
 	checkMono()
 	font.OnCurrentFontChanged(func(*qtgui.QFont) { checkMono() })
 
+	// The pane headers' font: the terminal's, a little smaller, unless set.
+	hdrFamily, hdrPoints := cfg.HeaderFont()
+	hdrFont := qtwidgets.NewQFontComboBox(look)
+	hdrFont.SetFontFilters(qtwidgets.QFontComboBoxScalableFonts)
+	hdrFont.SetCurrentFont(qtgui.NewQFontWithFamily(hdrFamily))
+	hdrSize := qtwidgets.NewQDoubleSpinBox(look)
+	hdrSize.SetRange(config.MinFontSize, config.MaxFontSize)
+	hdrSize.SetDecimals(1)
+	hdrSize.SetSingleStep(0.5)
+	hdrSize.SetSuffix(" pt")
+	hdrSize.SetValue(hdrPoints)
+	hdrRow := qtwidgets.NewQHBoxLayout(nil)
+	hdrRow.AddWidgetFull(hdrFont, 1, 0)
+	hdrRow.AddWidget(hdrSize)
+	lf.AddRowTextLayout("Pane header font:", hdrRow)
+	hdrSame := qtwidgets.NewQCheckBoxWithText("Use the terminal font, a little smaller", nil)
+	hdrSame.SetChecked(cfg.HeaderFontFamily == "" && cfg.HeaderFontSize <= 0)
+	lf.AddRowText("", hdrSame)
+	hdrEnable := func(same bool) {
+		hdrFont.SetEnabled(!same)
+		hdrSize.SetEnabled(!same)
+	}
+	hdrEnable(hdrSame.IsChecked())
+	hdrSame.OnToggled(hdrEnable)
+
 	lineHeight := qtwidgets.NewQDoubleSpinBox(look)
-	lineHeight.SetRange(0.8, 2.5)
+	lineHeight.SetRange(config.MinLineHeight, config.MaxLineHeight)
 	lineHeight.SetDecimals(2)
 	lineHeight.SetSingleStep(0.05)
 	lineHeight.SetValue(cfg.LineHeight)
 	lf.AddRowText("Line height:", lineHeight)
 	padding := qtwidgets.NewQSpinBox(look)
-	padding.SetRange(0, 50)
+	padding.SetRange(0, config.MaxPadding)
 	padding.SetSuffix(" px")
 	padding.SetValue(cfg.Padding)
 	lf.AddRowText("Padding:", padding)
@@ -128,7 +156,7 @@ func (a *App) showOptions(p *Pane) {
 	// ---- behaviour
 	beh, bf := optionsSection(gl, "Behaviour", "")
 	scrollback := qtwidgets.NewQSpinBox(beh)
-	scrollback.SetRange(0, 1000000)
+	scrollback.SetRange(0, config.MaxScrollback)
 	scrollback.SetSingleStep(1000)
 	scrollback.SetSuffix(" lines")
 	scrollback.SetValue(cfg.Scrollback)
@@ -168,22 +196,30 @@ func (a *App) showOptions(p *Pane) {
 			return false
 		}
 		family := font.CurrentFont().Family()
+		headerFamily, headerSize := "", 0.0
+		if !hdrSame.IsChecked() {
+			headerFamily = hdrFont.CurrentFont().Family()
+			headerSize = math.Round(hdrSize.Value()*10) / 10
+		}
 		values := map[string]any{
-			"window_theme":   windowTheme.value(),
-			"font_family":    family,
-			"font_size":      math.Round(size.Value()*10) / 10,
-			"line_height":    math.Round(lineHeight.Value()*100) / 100,
-			"padding":        padding.Value(),
-			"ligatures":      ligatures.IsChecked(),
-			"bold_is_bright": boldBright.IsChecked(),
-			"scrollbar":      scrollbar.IsChecked(),
-			"cursor_style":   cursor.value(),
-			"cursor_blink":   blink.IsChecked(),
-			"scrollback":     scrollback.Value(),
-			"copy_on_select": copySel.IsChecked(),
-			"paste_warning":  paste.value(),
-			"osc52":          osc52.value(),
-			"keybindings":    bindings,
+			"header_font_family": headerFamily,
+			"header_font_size":   headerSize,
+			"window_theme":       windowTheme.value(),
+			"toolbar":            toolbar.IsChecked(),
+			"font_family":        family,
+			"font_size":          math.Round(size.Value()*10) / 10,
+			"line_height":        math.Round(lineHeight.Value()*100) / 100,
+			"padding":            padding.Value(),
+			"ligatures":          ligatures.IsChecked(),
+			"bold_is_bright":     boldBright.IsChecked(),
+			"scrollbar":          scrollbar.IsChecked(),
+			"cursor_style":       cursor.value(),
+			"cursor_blink":       blink.IsChecked(),
+			"scrollback":         scrollback.Value(),
+			"copy_on_select":     copySel.IsChecked(),
+			"paste_warning":      paste.value(),
+			"osc52":              osc52.value(),
+			"keybindings":        bindings,
 		}
 		values["themes"], values["theme"] = readThemes()
 		if family != a.cfg.FontFamily || values["font_size"] != a.cfg.FontSize {

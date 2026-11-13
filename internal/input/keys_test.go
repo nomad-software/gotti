@@ -88,17 +88,41 @@ func TestKitty(t *testing.T) {
 }
 
 func TestMouse(t *testing.T) {
-	if got := string(EncodeMouse(MouseLeft, MousePress, 0, 0, 0)); got != "\x1b[<0;1;1M" {
+	if got := string(EncodeMouse(MouseLeft, MousePress, 0, 0, 0, true)); got != "\x1b[<0;1;1M" {
 		t.Error(got)
 	}
-	if got := string(EncodeMouse(MouseLeft, MouseRelease, 9, 4, Ctrl)); got != "\x1b[<16;10;5m" {
+	if got := string(EncodeMouse(MouseLeft, MouseRelease, 9, 4, Ctrl, true)); got != "\x1b[<16;10;5m" {
 		t.Error(got)
 	}
-	if got := string(EncodeMouse(MouseLeft, MouseMotion, 1, 1, 0)); got != "\x1b[<32;2;2M" {
+	if got := string(EncodeMouse(MouseLeft, MouseMotion, 1, 1, 0, true)); got != "\x1b[<32;2;2M" {
 		t.Error(got)
 	}
-	if got := string(EncodeMouse(MouseWheelDown, MousePress, 1, 1, Shift)); got != "\x1b[<69;2;2M" {
+	if got := string(EncodeMouse(MouseWheelDown, MousePress, 1, 1, Shift, true)); got != "\x1b[<69;2;2M" {
 		t.Error(got)
+	}
+}
+
+// TestMouseX10 checks the original form of report, for programs that
+// don't ask for SGR: CSI M and three bytes, each 32 more than its value.
+func TestMouseX10(t *testing.T) {
+	for _, tc := range []struct {
+		button, action, x, y int
+		mods                 Mods
+		want                 string
+	}{
+		{MouseLeft, MousePress, 0, 0, 0, "\x1b[M !!"},
+		{MouseRight, MousePress, 9, 4, Ctrl, "\x1b[M2*%"},       // 32+2+16, 32+10, 32+5
+		{MouseRight, MouseRelease, 9, 4, Ctrl, "\x1b[M3*%"},     // release: button 3
+		{MouseLeft, MouseMotion, 1, 1, 0, "\x1b[M@\"\""},        // 32+32
+		{MouseWheelUp, MousePress, 0, 0, Shift, "\x1b[Md!!"},    // 32+64+4
+		{MouseLeft, MousePress, 222, 222, 0, "\x1b[M \xff\xff"}, // the last cell it reaches
+	} {
+		if got := string(EncodeMouse(tc.button, tc.action, tc.x, tc.y, tc.mods, false)); got != tc.want {
+			t.Errorf("%+v: %q, want %q", tc, got, tc.want)
+		}
+	}
+	if got := EncodeMouse(MouseLeft, MousePress, 223, 0, 0, false); got != nil {
+		t.Errorf("past column 223: %q", got)
 	}
 }
 

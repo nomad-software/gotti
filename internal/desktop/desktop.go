@@ -37,8 +37,9 @@ func Executable() (string, error) {
 	return path, nil
 }
 
-// Dir returns the folder desktop entries of the user's own are kept in:
-// applications in $XDG_DATA_HOME, or in ~/.local/share without it.
+// Dir returns the user's data folder, $XDG_DATA_HOME or ~/.local/share
+// without it, which holds their desktop entries (in applications) and
+// icons.
 func Dir() (string, error) {
 	data := os.Getenv("XDG_DATA_HOME")
 	if data == "" || !filepath.IsAbs(data) {

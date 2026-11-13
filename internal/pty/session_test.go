@@ -130,3 +130,36 @@ func TestChildEnvironment(t *testing.T) {
 		t.Fatalf("child saw %q", got)
 	}
 }
+
+// TestWriteNeverBlocks writes far more than a child that never reads its
+// input can take: Write is called from the UI thread and the reader, so it
+// must return at once rather than wait for the child.
+func TestWriteNeverBlocks(t *testing.T) {
+	tm := term.New(40, 5, 100)
+	s, err := Start(tm, Options{Command: []string{"sh", "-c", "stty raw -echo; sleep 10"}, Cols: 40, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Run()
+	defer s.Close()
+	time.Sleep(200 * time.Millisecond) // let stty run
+	chunk := []byte(strings.Repeat("x", 1000))
+	done := make(chan struct{})
+	go func() {
+		for range 5000 { // 5 MB, beyond the queue's limit
+			s.Write(chunk)
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Write blocked on a child that isn't reading")
+	}
+	s.mu.Lock()
+	queued := s.queued
+	s.mu.Unlock()
+	if queued > maxQueued {
+		t.Errorf("%d bytes queued, more than %d", queued, maxQueued)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nomad-software/qute/qtcore"
 	"github.com/nomad-software/qute/qtwidgets"
 
 	"termite/internal/config"
@@ -56,15 +57,20 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 	// ---- left: the list and its buttons
 	left := qtwidgets.NewQVBoxLayout(nil)
 	_, lf := optionsSection(left, "Themes", "The selected theme is used when you press OK or Apply.")
+	// A theme is renamed in the list itself: double-click it, press F2 or
+	// use Rename.
 	list := qtwidgets.NewQListWidget(page)
 	list.SetMinimumWidth(170)
+	list.SetEditTriggers(qtwidgets.QAbstractItemViewDoubleClicked | qtwidgets.QAbstractItemViewEditKeyPressed)
 	lf.AddRowWidget(list)
 	addBtn := qtwidgets.NewQPushButtonWithText("Add", nil)
 	dupBtn := qtwidgets.NewQPushButtonWithText("Duplicate", nil)
+	renameBtn := qtwidgets.NewQPushButtonWithText("Rename", nil)
 	removeBtn := qtwidgets.NewQPushButtonWithText("Remove", nil)
 	row := qtwidgets.NewQHBoxLayout(nil)
 	row.AddWidget(addBtn)
 	row.AddWidget(dupBtn)
+	row.AddWidget(renameBtn)
 	row.AddWidget(removeBtn)
 	lf.AddRowSpanLayout(row)
 	restoreBtn := qtwidgets.NewQPushButtonWithText("Restore Built-in Themes", nil)
@@ -74,8 +80,6 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 	// ---- right: the editor
 	right := qtwidgets.NewQVBoxLayout(nil)
 	_, form := optionsSection(right, "Terminal", "")
-	name := qtwidgets.NewQLineEdit(page)
-	form.AddRowText("Name:", name)
 	colorBtns := make([]*qtwidgets.QPushButton, len(themeColorFields))
 	for i, f := range themeColorFields {
 		b := qtwidgets.NewQPushButton(page)
@@ -144,13 +148,6 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 	}
 	load := func(rowIdx int) {
 		current = rowIdx
-		s := cur()
-		if s == nil {
-			return
-		}
-		loading = true
-		name.SetText(s.Name)
-		loading = false
 		refresh()
 	}
 	rebuildList := func(selectID string) {
@@ -159,6 +156,8 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 		sel := 0
 		for i, id := range ids {
 			list.AddItemText(specs[id].Name)
+			item := list.Item(i)
+			item.SetFlags(item.Flags() | qtcore.ItemIsEditable)
 			if id == selectID {
 				sel = i
 			}
@@ -172,15 +171,30 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 			load(r)
 		}
 	})
-	name.OnTextEdited(func(text string) {
-		if loading || cur() == nil {
+	// rename starts editing the selected theme's name in the list.
+	rename := func() {
+		if item := list.CurrentItem(); item != nil {
+			list.EditItem(item)
+		}
+	}
+	list.OnItemChanged(func(item *qtwidgets.QListWidgetItem) {
+		r := list.Row(item)
+		if loading || r < 0 || r >= len(ids) {
 			return
 		}
-		s := cur()
-		s.Name = text
-		store(s)
-		list.Item(current).SetText(text)
+		s := specs[ids[r]]
+		text := strings.TrimSpace(item.Text())
+		if text != "" {
+			s.Name = text
+			specs[ids[r]] = s
+		}
+		if item.Text() != s.Name { // blank, or with spaces around it
+			loading = true
+			item.SetText(s.Name)
+			loading = false
+		}
 	})
+	renameBtn.OnClicked(func(bool) { rename() })
 	pick := func(title string, initial uint32, set func(string)) {
 		c := qtwidgets.QColorDialogGetColorFull(mustColor(config.HexColor(initial)), dlg, title, 0)
 		if c.IsValid() {
@@ -237,8 +251,7 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 		specs[id] = n
 		ids = append(ids, id)
 		rebuildList(id)
-		name.SetFocus()
-		name.SelectAll()
+		rename()
 	}
 	addBtn.OnClicked(func(bool) { addCopy("New Theme") })
 	dupBtn.OnClicked(func(bool) {

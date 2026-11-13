@@ -374,9 +374,10 @@ const (
 	MouseMotion
 )
 
-// EncodeMouse returns an SGR (?1006) mouse report. x and y are 0-based
-// cell coordinates.
-func EncodeMouse(button, action int, x, y int, mods Mods) []byte {
+// EncodeMouse returns a mouse report: SGR (?1006) when sgr, else the
+// original X10 form, which can't say which button was released nor reach
+// past column or row 223 (nil there). x and y are 0-based cell coordinates.
+func EncodeMouse(button, action int, x, y int, mods Mods, sgr bool) []byte {
 	var b int
 	switch button {
 	case MouseLeft, MouseMiddle, MouseRight:
@@ -403,6 +404,16 @@ func EncodeMouse(button, action int, x, y int, mods Mods) []byte {
 	}
 	if mods&Ctrl != 0 {
 		b += 16
+	}
+	if !sgr {
+		const most = 255 - 32
+		if x+1 > most || y+1 > most {
+			return nil
+		}
+		if action == MouseRelease {
+			b = b&^3 | 3 // the button is not said
+		}
+		return []byte{0x1b, '[', 'M', byte(32 + b), byte(32 + x + 1), byte(32 + y + 1)}
 	}
 	final := "M"
 	if action == MouseRelease {

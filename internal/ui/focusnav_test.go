@@ -90,7 +90,8 @@ func TestChordConversion(t *testing.T) {
 	if got := qtToChord("Ctrl+Shift++"); got != "ctrl+shift+equal" {
 		t.Errorf("Ctrl+Shift++ -> %q", got)
 	}
-	if got := qtToChord("Ctrl++"); got != "ctrl+plus" {
+	// + is matched by the key it is on, as termite matches key presses.
+	if got := qtToChord("Ctrl++"); got != "ctrl+equal" {
 		t.Errorf("Ctrl++ -> %q", got)
 	}
 	// Only the first chord of a sequence is used.
@@ -104,6 +105,27 @@ func TestChordConversion(t *testing.T) {
 		}
 		if got := qtToChord(chordToQt(chord)); got != chord {
 			t.Errorf("%s: %q -> %q -> %q", action, chord, chordToQt(chord), got)
+		}
+	}
+}
+
+// TestShortcutsListEveryAction checks that the options dialog's shortcuts
+// page lists every action once: the page saves the bindings it lists, so
+// one missing from it would lose its binding when the dialog is saved.
+func TestShortcutsListEveryAction(t *testing.T) {
+	seen := map[string]bool{}
+	for _, sa := range shortcutActions {
+		if seen[sa.action] {
+			t.Errorf("%s is listed twice", sa.action)
+		}
+		seen[sa.action] = true
+		if _, ok := config.DefaultKeybindings[sa.action]; !ok {
+			t.Errorf("%s is listed but is not an action", sa.action)
+		}
+	}
+	for action := range config.DefaultKeybindings {
+		if !seen[action] {
+			t.Errorf("%s is not listed", action)
 		}
 	}
 }

@@ -114,6 +114,19 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 			}
 		}
 		i = j
+		// Right halves and pads are skipped below, so a cursor on one is
+		// placed by its head (one column right of it), or by what follows
+		// the pad.
+		rightHalf := false
+		if cursorOff >= 0 && cursorOff < len(para) {
+			switch a := para[cursorOff].Attr; {
+			case a&AttrWideCont != 0 && cursorOff > 0:
+				cursorOff--
+				rightHalf = true
+			case a&AttrWrapPad != 0:
+				cursorOff++
+			}
+		}
 		// Re-split it at the new width.
 		for k := range para {
 			c := para[k]
@@ -152,6 +165,9 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 		}
 		if cursorOff >= 0 && st.curLine < 0 {
 			st.curLine, st.curX = st.lines, min(lx, cols-1)
+		}
+		if rightHalf {
+			st.curX = min(st.curX+1, cols-1)
 		}
 		emit(false)
 	}
