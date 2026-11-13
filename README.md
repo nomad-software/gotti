@@ -41,7 +41,7 @@ vim).
   directories, synchronized output (2026), bracketed paste, SGR and X10 mouse,
   focus events and the kitty keyboard protocol.
 - **A workspace, not just a window.** Flat tabs that share the window's
-  width, and splits with
+  width, splits that can be rearranged by dragging a pane's header, with
   cursor-aligned Alt+Arrow navigation, input broadcast to a tab or a
   group of panes (their headers take the focused pane's colours), saved layouts that reopen each pane in its directory
   and command, pane headers that show where each shell is, and a toolbar
@@ -182,6 +182,9 @@ OSC 7 report or the foreground process. Each tab is named after its
 focused pane's header, and the window title is the last part of the current
 tab's focused pane's directory (`share` for `/usr/share`). Titles set by
 programs are ignored. A new pane made by splitting takes the keyboard focus.
+Drag a pane's header onto another pane of the same tab to move it there:
+it splits that pane on the side nearest the pointer (shaded while you
+drag), keeps its shell, and takes the focus. Escape cancels the drag.
 
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs
@@ -282,7 +285,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
-DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, focus, title, toolbar, options, closing, failed starts), under Xvfb
+DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, dragging panes, focus, title, toolbar, options, closing, failed starts), under Xvfb
 make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)

@@ -224,7 +224,11 @@ func (a *App) windowClosed(w *Window) {
 }
 
 func (a *App) paneFocused(p *Pane) {
+	moved := a.focused == nil || a.focused.tab != p.tab
 	a.focused = p
+	if moved && a.broadcast == BroadcastAll {
+		a.refreshBroadcast() // typing reaches another tab now
+	}
 	p.tab.focused = p
 	p.tab.win.updateTitles()
 }
@@ -281,8 +285,8 @@ func (a *App) inputTargets(p *Pane) []*Pane {
 // pane typed in, which its header shows with the focused colours.
 func (a *App) broadcastsTo(p *Pane) bool {
 	switch a.broadcast {
-	case BroadcastAll:
-		return true
+	case BroadcastAll: // the focused pane's tab (inputTargets)
+		return a.focused != nil && p.tab == a.focused.tab
 	case BroadcastGroup:
 		return p.InGroup
 	}
@@ -385,14 +389,14 @@ func (a *App) runAction(p *Pane, action string) {
 		name, ok := qtwidgets.QInputDialogGetTextFull(w.w, "Save layout", "Layout name:", qtwidgets.QLineEditNormal, "", 0, 0)
 		if ok && name != "" {
 			if err := w.SaveLayout(name); err != nil {
-				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
+				warn(w.w, desktop.DisplayName, err.Error())
 			}
 		}
 		p.refocus()
 	case "load_layout":
 		names := ListLayouts()
 		if len(names) == 0 {
-			qtwidgets.QMessageBoxInformation(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
+			inform(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
 			return
 		}
 		name, ok := qtwidgets.QInputDialogGetItemFull(w.w, "Load layout", "Layout:", names, 0, false, 0, 0)
@@ -400,7 +404,7 @@ func (a *App) runAction(p *Pane, action string) {
 		if ok {
 			lf, err := LoadLayout(name)
 			if err != nil {
-				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
+				warn(w.w, desktop.DisplayName, err.Error())
 				return
 			}
 			w.loadLayout(lf)
@@ -437,7 +441,7 @@ func (a *App) runAction(p *Pane, action string) {
 func (a *App) split(p *Pane, orient qtcore.Orientation) {
 	np, err := a.NewPane(p.tab, p.cwd(), a.defaultCmd)
 	if err != nil {
-		qtwidgets.QMessageBoxWarning(p.Widget, desktop.DisplayName, err.Error())
+		warn(p.Widget, desktop.DisplayName, err.Error())
 		return
 	}
 	p.tab.Split(p, orient, np)

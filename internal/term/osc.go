@@ -208,7 +208,7 @@ func (t *Terminal) oscClipboard(s string) {
 	primary := strings.ContainsAny(target, "ps") && !strings.Contains(target, "c")
 	if data == "?" {
 		if t.AllowClipboardRead {
-			t.ClipboardQuery = true
+			t.ClipboardQueryPrimary = primary
 			t.events |= EvClipboardQuery
 		}
 		return
@@ -221,10 +221,14 @@ func (t *Terminal) oscClipboard(s string) {
 	t.events |= EvClipboard
 }
 
-// ReplyClipboard answers a pending OSC 52 query.
+// ReplyClipboard answers a pending OSC 52 query with text, read from the
+// selection it asked for (ClipboardQueryPrimary).
 func (t *Terminal) ReplyClipboard(text string) {
-	t.ClipboardQuery = false
-	t.reply("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\x1b\\")
+	target := "c"
+	if t.ClipboardQueryPrimary {
+		target = "p"
+	}
+	t.reply("\x1b]52;" + target + ";" + base64.StdEncoding.EncodeToString([]byte(text)) + "\x1b\\")
 }
 
 // dcsDispatch handles DECRQSS and XTGETTCAP; other DCS strings are ignored.

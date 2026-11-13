@@ -285,7 +285,13 @@ func (p *Pane) handleEvents(ev term.Event, cwd string, clips []term.ClipboardWri
 		}
 	}
 	if ev&term.EvClipboardQuery != 0 {
-		text := qtgui.QGuiApplicationClipboard().Text()
+		p.T.Mu.Lock()
+		mode := qtgui.QClipboardClipboard
+		if p.T.ClipboardQueryPrimary {
+			mode = qtgui.QClipboardSelection
+		}
+		p.T.Mu.Unlock()
+		text := qtgui.QGuiApplicationClipboard().TextFull(mode)
 		p.T.Mu.Lock()
 		p.T.ReplyClipboard(text)
 		r := p.T.TakeReplies()
@@ -530,6 +536,10 @@ func (p *Pane) modes() input.Modes {
 }
 
 func (p *Pane) keyPress(qe *qtgui.QKeyEvent, release bool) bool {
+	// Escape while dragging a pane header ends the drag, not in the shell.
+	if qtcore.Key(qe.Key()) == qtcore.Key_Escape && p.tab.cancelDrag() {
+		return true
+	}
 	ev := translateKey(qe, release)
 	if chord, ok := chordOf(ev); ok {
 		if action, ok := p.app.bindings[chord]; ok {
@@ -1002,7 +1012,10 @@ func (p *Pane) paste(text string) {
 	if input.IsMultiLine(text) && (warn == "always" || warn == "unbracketed" && !bracketed) {
 		lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
 		msg := fmt.Sprintf("You are pasting %d lines. They may run as commands.\n\nPaste anyway?", lines)
-		ok := qtwidgets.QMessageBoxQuestion(p.Widget, "Multi-line Paste", msg) == qtwidgets.QMessageBoxYes
+		ok := ask(p.Widget, "Multi-line Paste", msg)
+		if p.exited {
+			return
+		}
 		p.refocus()
 		if !ok {
 			return
@@ -1139,6 +1152,9 @@ func (p *Pane) tabTitle() string {
 
 // refocus returns keyboard focus to the pane after a dialog.
 func (p *Pane) refocus() {
+	if p.exited { // it closed while a menu or dialog was open
+		return
+	}
 	p.GL.ActivateWindow()
 	p.GL.SetFocus()
 }

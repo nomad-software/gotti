@@ -14,7 +14,7 @@ and architecture.
 - First build compiles qute's shims (minutes). Always run `gofmt -l .`,
   `go vet ./...`, `staticcheck ./...` (in `$GOPATH/bin`) and
   `go run github.com/nomad-software/qute/cmd/qute@<version in go.mod> vet ./...`.
-- GUI tests (`internal/ui/gui_test.go`: splits and focus, window title, toolbar,
+- GUI tests (`internal/ui/gui_test.go`, `dragpane_test.go`: splits and focus, dragging panes, window title, toolbar,
   options dialog, closing panes and windows, shells that fail to start)
   need an X display, as offscreen gives no GL
   context: `DISPLAY=:99 go test ./internal/ui` under Xvfb (they skip without
@@ -61,6 +61,17 @@ and architecture.
   layouts.
   `qtutil.go` has helpers for throwaway Qt values. Overrides of Qt virtuals
   are Go subclasses (`headerLabel`, `searchBar`, `windowWidget`).
+- Dragging a pane (`dragpane.go`): the header (`headerLabel`) takes the
+  press, move and release itself (Qt's implicit grab, no QDrag) and
+  `Tab.Move` puts the pane against the nearest edge of the pane under the
+  pointer (`edgeAt`), shaded by `termiteDropZone`; `Tab.dragging` is the
+  pane being dragged, and Escape in any of the tab's panes (`cancelDrag`)
+  or the pane closing ends the drag. `Tab.unlink` (shared with
+  `Remove`) parks the widget in the tab container, and new splitters start
+  there: a pane's GL widget must never leave its window, or its context goes.
+  Same tab only. When a splitter collapses into a splitter of its parent's
+  orientation, `Tab.splice` merges it into the parent: same-orientation
+  splitters never nest, as saved layouts can't express that.
 - Tabs (`tabbar.go`): a QTabWidget subclass so it can take a QTabBar
   subclass that asks for the window's whole width and gives every tab the
   same base width; with expanding on (after document mode, which turns it
@@ -149,6 +160,12 @@ and architecture.
   its `CloseEvent`), and a pane or tab whose shell failed to start deletes
   its widgets; a window whose first tab failed closes again. Posted
   callbacks check `p.exited`, which closing sets, before touching widgets.
+- Menus and dialogs run nested event loops in which a pane (and with its
+  last tab, its window) can close and be deleted. Use `ask`/`warn`/`inform`
+  (`qtutil.go`), never Qt's static `QMessageBox` functions, which keep the
+  box on the stack where its parent's deletion frees it twice; check
+  `Alive()` before deleting a menu afterwards, and `p.exited` before using
+  the pane (`refocus` does).
 - Clear Scrollback goes through `Terminal.ClearScrollback`, which clears
   the primary screen's scrollback: `Buf()` is the alternate screen (with
   none) while a full-screen program runs.

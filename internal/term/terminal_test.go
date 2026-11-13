@@ -526,3 +526,30 @@ func TestResetClearsTitleStack(t *testing.T) {
 		t.Fatalf("title %q came back from before the reset", term.Title)
 	}
 }
+
+// TestOSC52Query checks that a clipboard query is answered for the
+// selection it named, and only when reading is allowed.
+func TestOSC52Query(t *testing.T) {
+	for _, c := range []struct {
+		target, reply string
+		primary       bool
+	}{{"c", "c", false}, {"p", "p", true}, {"s", "p", true}, {"pc", "c", false}} {
+		term := newT(20, 2)
+		term.AllowClipboardRead = true
+		feed(term, "\x1b]52;"+c.target+";?\x07")
+		if term.TakeEvents()&EvClipboardQuery == 0 {
+			t.Fatalf("%s: no query reported", c.target)
+		}
+		if term.ClipboardQueryPrimary != c.primary {
+			t.Errorf("%s: primary %v", c.target, term.ClipboardQueryPrimary)
+		}
+		term.ReplyClipboard("hi")
+		if got, want := string(term.TakeReplies()), "\x1b]52;"+c.reply+";aGk=\x1b\\"; got != want {
+			t.Errorf("%s: reply %q, want %q", c.target, got, want)
+		}
+	}
+	term := feed(newT(20, 2), "\x1b]52;c;?\x07")
+	if term.TakeEvents()&EvClipboardQuery != 0 {
+		t.Error("query reported with clipboard reading off")
+	}
+}

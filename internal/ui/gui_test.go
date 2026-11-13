@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nomad-software/qute"
 	"github.com/nomad-software/qute/qtcore"
@@ -696,6 +697,20 @@ func TestBroadcastHeader(t *testing.T) {
 		if got := marked(); !slices.Equal(got, []bool{true, true}) {
 			t.Errorf("broadcasting to the tab: %v", got)
 		}
+		// Typing reaches only the focused pane's tab, so another tab's
+		// headers stay plain, then change places with the first tab's.
+		other := w.NewTab("", nil).Panes()[0]
+		qutetest.Wait(200)
+		if !other.header.Property("focused").ToBool() || panes[1].header.Property("focused").ToBool() {
+			t.Errorf("broadcasting from a new tab: it %v, first tab %v",
+				other.header.Property("focused").ToBool(), marked())
+		}
+		w.tabs.SetCurrentIndex(0)
+		panes[0].GL.SetFocus()
+		qutetest.Wait(100)
+		if got := marked(); !slices.Equal(got, []bool{true, true}) || other.header.Property("focused").ToBool() {
+			t.Errorf("back on the first tab: %v, other tab %v", got, other.header.Property("focused").ToBool())
+		}
 		a.runAction(panes[0], "broadcast_all")
 		if got := marked(); !slices.Equal(got, []bool{true, false}) {
 			t.Errorf("not broadcasting: %v", got)
@@ -759,5 +774,43 @@ func TestSearchAfterResize(t *testing.T) {
 			t.Errorf("match at %v, then %v showing %q", before, after, textAt(after))
 		}
 		p.closeSearch()
+	})
+}
+
+// TestPaneExitsUnderMenu closes a pane's shell while its context menu,
+// then its multi-line paste question, is open: neither may outlive the
+// pane in a way that crashes when it closes.
+func TestPaneExitsUnderMenu(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		a, w := newTestApp(t)
+		a.cfg.PasteWarning = "always"
+		for _, open := range []func(p *Pane){
+			func(p *Pane) { p.showContextMenu(100, 100, nil) },
+			func(p *Pane) { p.paste("one\ntwo\n") },
+		} {
+			a.runAction(focusedPane(t, w), "split_vertical")
+			qutetest.Wait(200)
+			p := focusedPane(t, w)
+			n := len(w.allPanes())
+			time.AfterFunc(300*time.Millisecond, func() {
+				qute.Post(func() { p.S.WriteString("exit\r") })
+			})
+			time.AfterFunc(1500*time.Millisecond, func() {
+				qute.Post(func() {
+					if m := qtwidgets.QApplicationActivePopupWidget(); m != nil {
+						m.Close()
+					}
+					if m := qtwidgets.QApplicationActiveModalWidget(); m != nil {
+						m.Close()
+					}
+				})
+			})
+			open(p)
+			qutetest.Wait(200)
+			if got := len(w.allPanes()); got != n-1 {
+				t.Fatalf("%d panes after one of %d exited", got, n)
+			}
+		}
 	})
 }

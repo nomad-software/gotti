@@ -145,8 +145,7 @@ func (r *Renderer) SetFramebufferSize(w, h int) {
 func (r *Renderer) Invalidate() { r.allDirty = true }
 
 // Prepare copies the state needed for drawing. The caller holds t.Mu.
-// It reports whether anything needs to be drawn.
-func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
+func (r *Renderer) Prepare(t *term.Terminal, v *View) {
 	cols, rows := t.Size()
 	if cols != r.cols || rows != r.rows {
 		r.cols, r.rows = cols, rows
@@ -192,7 +191,6 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
 		r.reverse = t.ReverseVideo
 		r.allDirty = true
 	}
-	changed := r.allDirty
 	for y := 0; y < rows; y++ {
 		abs := top + int64(y)
 		if !r.allDirty && !(!scrolled && buf.IsDirty(y)) {
@@ -207,7 +205,6 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
 		}
 		r.rowAbs[y] = abs
 		r.rowDirty[y] = true
-		changed = true
 	}
 	buf.ClearDirty()
 
@@ -229,9 +226,7 @@ func (r *Renderer) Prepare(t *term.Terminal, v *View) bool {
 		r.lastSigCursor = sig
 		r.lastCurY = vy
 		r.lastPreedit = v.Preedit
-		changed = true
 	}
-	return changed || v.CursorDirty
 }
 
 func b2i(b bool) int {

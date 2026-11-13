@@ -191,7 +191,7 @@ func (a *App) showOptions(p *Pane) {
 		bindings, clashes := readKeys()
 		if len(clashes) > 0 {
 			tabs.SetCurrentWidget(keysPage)
-			qtwidgets.QMessageBoxWarning(dlg, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
+			warn(dlg, desktop.DisplayName, "These shortcuts are used by more than one action:\n\n"+
 				strings.Join(clashes, "\n")+"\n\nChange or clear them, then try again.")
 			return false
 		}
@@ -226,7 +226,7 @@ func (a *App) showOptions(p *Pane) {
 			a.fontScale = 1 // an explicit size replaces any zoom
 		}
 		if err := config.SetValues(a.cfgPath, values); err != nil {
-			qtwidgets.QMessageBoxWarning(dlg, desktop.DisplayName, "The settings could not be saved:\n"+err.Error())
+			warn(dlg, desktop.DisplayName, "The settings could not be saved:\n"+err.Error())
 			return false
 		}
 		c, err := config.Load(a.cfgPath)

@@ -18,10 +18,13 @@ import (
 const headerRefresh = 300 * time.Millisecond
 
 // headerLabel is the header's QLabel, which lays its text out again
-// whenever it is resized.
+// whenever it is resized. Dragging it moves the pane (dragpane.go).
 type headerLabel struct {
 	qtwidgets.QLabelBase
 	p *Pane
+
+	pressAt qtcore.QPointF // where the left button went down, on screen
+	pressed bool           // the left button is down on the header
 }
 
 // ResizeEvent overrides QWidget::resizeEvent.

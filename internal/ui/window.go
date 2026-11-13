@@ -94,6 +94,7 @@ func (w *Window) applyTheme() {
 		"$headerFg", hex(th.HeaderFg),
 		"$focusBg", hex(th.HeaderFocusBg),
 		"$focusFg", hex(th.HeaderFocusFg),
+		"$focusTint", fmt.Sprintf("rgba(%d, %d, %d, 90)", th.HeaderFocusBg>>16&0xff, th.HeaderFocusBg>>8&0xff, th.HeaderFocusBg&0xff),
 		"$font", strconv.Quote(family),
 		"$size", strconv.FormatFloat(size, 'f', 1, 64),
 	).Replace(`
@@ -111,6 +112,7 @@ func (w *Window) applyTheme() {
 		QLabel#termiteHeader { background: $headerBg; color: $headerFg; padding: 2px 10px; font-family: $font; font-size: $sizept; }
 		QLabel#termiteHeader[focused="true"] { background: $focusBg; color: $focusFg; }
 		QLabel#termiteHeader[problem="true"] { color: #dc322f; }
+		QLabel#termiteDropZone { background: $focusTint; border: 2px solid $focusBg; }
 	`))
 }
 
@@ -157,7 +159,7 @@ func (w *Window) NewTab(cwd string, cmd []string) *Tab {
 	p, err := w.app.NewPane(t, cwd, cmd)
 	if err != nil {
 		t.container.DeleteLater()
-		qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
+		warn(w.w, desktop.DisplayName, err.Error())
 		return nil
 	}
 	t.setRoot(&Node{pane: p})
@@ -288,10 +290,7 @@ func (w *Window) moveTab(d int) {
 	w.updateTitles()
 }
 
-func paneRect(p *Pane) rect {
-	x, y := mapToGlobal(p.GL, 0, 0)
-	return rect{float64(x), float64(y), float64(p.GL.Width()), float64(p.GL.Height())}
-}
+func paneRect(p *Pane) rect { return widgetRect(p.GL) }
 
 // cursorPoint returns the global position of the middle of p's text cursor.
 func cursorPoint(p *Pane) (float64, float64) {

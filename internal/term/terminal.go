@@ -111,13 +111,13 @@ type Terminal struct {
 	kittyAlt       []int
 
 	// state for the UI
-	Title              string
-	titleStack         []string
-	Cwd                string
-	ClipboardWrites    []ClipboardWrite
-	ClipboardQuery     bool // OSC 52 read request pending (target clipboard)
-	AllowClipboardRead bool
-	events             Event
+	Title                 string
+	titleStack            []string
+	Cwd                   string
+	ClipboardWrites       []ClipboardWrite
+	ClipboardQueryPrimary bool // the pending OSC 52 read asks for the primary selection
+	AllowClipboardRead    bool
+	events                Event
 
 	// colours (RGB 0xRRGGBB); set by the UI from the theme, modified by OSC
 	Palette                    [256]uint32

@@ -270,7 +270,7 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 	})
 	restoreBtn.OnClicked(func(bool) {
 		msg := "Restore the built-in themes? Changes made to them will be lost; your own themes are kept."
-		if qtwidgets.QMessageBoxQuestion(dlg, "Restore Built-in Themes", msg) != qtwidgets.QMessageBoxYes {
+		if !ask(dlg, "Restore Built-in Themes", msg) {
 			return
 		}
 		selected := ""

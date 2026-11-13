@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -58,6 +59,8 @@ type Tab struct {
 	layout    *qtwidgets.QVBoxLayout
 	root      *Node
 	focused   *Pane
+	dropZone  *qtwidgets.QLabel // where a dragged pane would go
+	dragging  *Pane             // the pane whose header is being dragged
 }
 
 // Panes lists the panes in the tab.
@@ -83,6 +86,12 @@ func (t *Tab) setRoot(n *Node) {
 // Split divides pane p; orient is the QSplitter orientation
 // (Horizontal = side by side, Vertical = stacked).
 func (t *Tab) Split(p *Pane, orient qtcore.Orientation, np *Pane) {
+	t.insert(p, orient, np, false)
+}
+
+// insert puts np beside p, splitting p's space in half: after p (right or
+// below) or, with before, ahead of it (left or above).
+func (t *Tab) insert(p *Pane, orient qtcore.Orientation, np *Pane, before bool) {
 	node := t.root.find(p)
 	if node == nil {
 		return
@@ -93,20 +102,26 @@ func (t *Tab) Split(p *Pane, orient qtcore.Orientation, np *Pane) {
 		// add next to p in the existing splitter, halving p's share
 		idx := par.split.IndexOf(node.widget())
 		sizes := par.split.Sizes()
-		par.split.InsertWidget(idx+1, np.Widget)
+		at := idx + 1
+		if before {
+			at = idx
+		}
+		par.split.InsertWidget(at, np.Widget)
 		leaf.parent = par
-		par.children = append(par.children[:idx+1], append([]*Node{leaf}, par.children[idx+1:]...)...)
+		par.children = append(par.children[:at], append([]*Node{leaf}, par.children[at:]...)...)
 		if idx < len(sizes) {
 			half := sizes[idx] / 2
-			sizes[idx] = sizes[idx] - half
-			sizes = append(sizes[:idx+1], append([]int{half}, sizes[idx+1:]...)...)
+			sizes[idx] -= half
+			sizes = append(sizes[:at], append([]int{half}, sizes[at:]...)...)
 			par.split.SetSizes(sizes)
 		}
 		np.Widget.Show()
 		return
 	}
-	// Replace the leaf with a new splitter holding it and the new pane.
-	sp := qtwidgets.NewQSplitterWithOrientation(orient, nil)
+	// Replace the leaf with a new splitter holding it and the new pane. The
+	// splitter starts inside the tab, so the panes never leave the window
+	// (a GL widget changing windows loses its context).
+	sp := qtwidgets.NewQSplitterWithOrientation(orient, t.container)
 	sp.SetObjectName("termiteSplit")
 	sp.SetChildrenCollapsible(false)
 	sp.SetHandleWidth(3)
@@ -117,13 +132,18 @@ func (t *Tab) Split(p *Pane, orient qtcore.Orientation, np *Pane) {
 		parentSizes = par.split.Sizes()
 	}
 	inner := &Node{pane: node.pane, parent: node}
-	sp.AddWidget(node.widget()) // moves p into the new splitter
-	sp.AddWidget(np.Widget)
-	node.widget().Show()
-	np.Widget.Show()
+	first, second := node.widget(), np.Widget
+	node.children = []*Node{inner, leaf}
+	if before {
+		first, second = second, first
+		node.children = []*Node{leaf, inner}
+	}
+	sp.AddWidget(first) // moves p into the new splitter
+	sp.AddWidget(second)
+	first.Show()
+	second.Show()
 	node.pane, node.split = nil, sp
 	leaf.parent = node
-	node.children = []*Node{inner, leaf}
 	if par != nil {
 		par.split.InsertWidget(idx, sp)
 		par.split.SetSizes(parentSizes)
@@ -141,16 +161,39 @@ func (t *Tab) Split(p *Pane, orient qtcore.Orientation, np *Pane) {
 	}
 }
 
-// Remove takes p out of the tree; it reports whether the tab is now empty.
+// Remove takes p out of the tree and deletes its widgets; it reports
+// whether the tab is now empty.
 func (t *Tab) Remove(p *Pane) bool {
-	node := t.root.find(p)
-	if node == nil {
+	if t.root.find(p) == nil {
 		return len(t.Panes()) == 0
 	}
 	p.releaseGL()
+	// A pane closing while being dragged never sees the release that would
+	// end the drag; any drag ends, as the targets change.
+	t.cancelDrag()
+	empty := t.unlink(p)
+	p.Widget.DeleteLater()
+	return empty
+}
+
+// Move takes p out of its place and puts it against edge e of target, as
+// dragging p's header onto target does.
+func (t *Tab) Move(p, target *Pane, e dropEdge) {
+	if p == target || t.root.find(p) == nil || t.root.find(target) == nil {
+		return
+	}
+	t.unlink(p)
+	t.insert(target, e.orient(), p, e.before())
+	p.Widget.Show()
+}
+
+// unlink takes p out of the tree, leaving its widget hidden in the tab, and
+// reports whether the tab is now empty.
+func (t *Tab) unlink(p *Pane) bool {
+	node := t.root.find(p)
 	if node == t.root {
 		t.layout.RemoveWidget(p.Widget)
-		p.Widget.DeleteLater()
+		p.Widget.Hide()
 		return true
 	}
 	par := node.parent
@@ -160,13 +203,14 @@ func (t *Tab) Remove(p *Pane) bool {
 			break
 		}
 	}
-	// The closed pane's space goes to its neighbour (the one before it, or
-	// after it when it was first), rather than wherever Qt would put it.
+	// The pane's space goes to its neighbour (the one before it, or after
+	// it when it was first), rather than wherever Qt would put it.
 	idx := par.split.IndexOf(p.Widget)
 	sizes := par.split.Sizes()
 	p.Widget.Hide()
-	p.Widget.SetParent(nil)
-	p.Widget.DeleteLater()
+	// Out of the splitter, which may be deleted below, but kept in the
+	// window (see insert).
+	p.Widget.SetParent(t.container)
 	if idx >= 0 && idx < len(sizes) && len(sizes) > 1 {
 		freed := sizes[idx]
 		sizes = append(sizes[:idx], sizes[idx+1:]...)
@@ -182,6 +226,9 @@ func (t *Tab) Remove(p *Pane) bool {
 			t.layout.RemoveWidget(par.split)
 			only.parent = nil
 			t.root = only
+		} else if only.split != nil && only.split.Orientation() == gp.split.Orientation() {
+			t.splice(gp, par, only)
+			return false
 		} else {
 			// ReplaceWidget puts the child exactly where the splitter was,
 			// with its geometry, so the sibling sizes are left untouched.
@@ -198,6 +245,46 @@ func (t *Tab) Remove(p *Pane) bool {
 		par.split.DeleteLater()
 	}
 	return false
+}
+
+// splice replaces gp's child par, a splitter left holding only inner, a
+// splitter of gp's orientation, with inner's children, sharing par's space
+// as inner did. Splitters of one orientation never nest: a saved layout
+// could not be built again from columns within columns.
+func (t *Tab) splice(gp, par, inner *Node) {
+	idx := gp.split.IndexOf(par.split)
+	outer, sizes := gp.split.Sizes(), inner.split.Sizes()
+	total := 0
+	for _, s := range sizes {
+		total += s
+	}
+	var space int
+	if idx >= 0 && idx < len(outer) {
+		space = outer[idx]
+		outer = slices.Delete(outer, idx, idx+1)
+	}
+	if total > 0 {
+		left := space
+		for i := range sizes[:len(sizes)-1] {
+			sizes[i] = sizes[i] * space / total
+			left -= sizes[i]
+		}
+		sizes[len(sizes)-1] = left
+	}
+	// Out of gp first, so its widgets and sizes line up again.
+	par.split.Hide()
+	par.split.SetParent(t.container)
+	for i, c := range inner.children {
+		gp.split.InsertWidget(idx+i, c.widget())
+		c.parent = gp
+		c.widget().Show()
+	}
+	at := slices.Index(gp.children, par)
+	gp.children = slices.Replace(gp.children, at, at+1, inner.children...)
+	if idx >= 0 && len(outer)+len(sizes) == gp.split.Count() {
+		gp.split.SetSizes(slices.Insert(outer, idx, sizes...))
+	}
+	par.split.DeleteLater() // and inner's, now empty, with it
 }
 
 // ---------------------------------------------------------------- layouts
