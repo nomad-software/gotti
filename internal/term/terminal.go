@@ -629,6 +629,16 @@ func (t *Terminal) restoreCursor() {
 	t.restorePenExtra()
 }
 
+// replyCursorPos reports the cursor's position (DSR 6), relative to the
+// scrolling region in origin mode, after prefix.
+func (t *Terminal) replyCursorPos(prefix string) {
+	y := t.cur.Y
+	if t.cur.origin {
+		y -= t.top
+	}
+	t.reply(prefix + strconv.Itoa(y+1) + ";" + strconv.Itoa(t.cur.X+1) + "R")
+}
+
 func (t *Terminal) restorePenExtra() {
 	e := ExtraOf(t.cur.pen.Extra)
 	t.ulColor, t.link = e.ULColor, e.Link
@@ -1013,11 +1023,7 @@ func (t *Terminal) csiDispatch(final byte) {
 		case 5:
 			t.reply("\x1b[0n")
 		case 6:
-			y := t.cur.Y
-			if t.cur.origin {
-				y -= t.top
-			}
-			t.reply("\x1b[" + strconv.Itoa(y+1) + ";" + strconv.Itoa(t.cur.X+1) + "R")
+			t.replyCursorPos("\x1b[")
 		}
 	case 'r':
 		top := ps.Get(0, 1) - 1
@@ -1114,11 +1120,7 @@ func (t *Terminal) csiPrivate(final, inter byte) {
 		}
 	case 'n':
 		if ps.Raw(0, 0) == 6 {
-			y := t.cur.Y
-			if t.cur.origin {
-				y -= t.top
-			}
-			t.reply("\x1b[?" + strconv.Itoa(y+1) + ";" + strconv.Itoa(t.cur.X+1) + "R")
+			t.replyCursorPos("\x1b[?") // DECXCPR
 		}
 	case 'J':
 		t.eraseDisplay(ps.Raw(0, 0))
@@ -1212,10 +1214,7 @@ func (t *Terminal) setDECMode(mode int, set bool) {
 			}
 		} else if t.altActive {
 			t.switchScreen(false, false)
-			t.cur = t.savedMain
-			t.cur.X = min(t.cur.X, t.cols-1)
-			t.cur.Y = min(t.cur.Y, t.rows-1)
-			t.restorePenExtra()
+			t.restoreCursor() // the normal screen's, now it is shown
 		}
 	case 1000, 1002, 1003:
 		switch {

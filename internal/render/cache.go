@@ -130,6 +130,9 @@ func (c *GlyphCache) get(k glyphKey, text func() string) (Sprite, bool) {
 		c.reset()
 		x, y, ok = c.atlas.Alloc(r.w, r.h)
 		if !ok {
+			// Too big even for an empty atlas: remember that, or every
+			// frame would clear the atlas again trying.
+			c.m[k] = Sprite{}
 			return Sprite{}, false
 		}
 	}

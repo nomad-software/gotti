@@ -31,7 +31,8 @@ and architecture.
   numbers whichever way they go.
 - `make appimage` runs `packaging/appimage.sh`, which works in a temporary
   folder outside the project (removed on exit) and leaves only
-  `Termite-<version>-x86_64.AppImage` in the project folder. Never create a
+  `Termite-<version>-x86_64.AppImage` in the project folder (the tools it
+  downloads are cached in `~/.cache/termite-appimage`). Never create a
   `build/` folder in the project. Releases come from
   `.github/workflows/appimage.yml`: `v` tags or by hand,
   Ubuntu 22.04 container (glibc 2.35) with aqtinstall's Qt 6.12.0, tests

@@ -16,6 +16,7 @@ import (
 
 	"termite/internal/config"
 	"termite/internal/icons"
+	"termite/internal/term"
 )
 
 // guiTests is set when the GUI tests can run: they need an X display (run
@@ -725,5 +726,38 @@ func TestStartupConfigError(t *testing.T) {
 		if text := w.currentPane().header.Text(); !strings.Contains(text, "cursor_style") {
 			t.Errorf("the header shows %q", text)
 		}
+	})
+}
+
+// TestSearchAfterResize checks that the matches follow the text when a
+// resize rewraps it.
+func TestSearchAfterResize(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		_, w := newTestApp(t)
+		p := w.currentPane()
+		p.S.WriteString("printf '%0150d zqmark\\n' 0\r")
+		qutetest.Wait(500)
+		p.openSearch()
+		p.searchBar.SetText("zqmark")
+		at := func() term.Pos {
+			if p.view.Current < 0 {
+				t.Fatal("no match")
+			}
+			return p.view.Matches[p.view.Current].Start
+		}
+		textAt := func(pos term.Pos) string {
+			p.T.Mu.Lock()
+			defer p.T.Mu.Unlock()
+			return p.T.Buf().TextRange(pos, term.Pos{Line: pos.Line, Col: pos.Col + 6}, false)
+		}
+		before := at()
+		w.w.Resize(w.w.Width()/2, w.w.Height())
+		qutetest.Wait(300)
+		after := at()
+		if after == before || textAt(after) != "zqmark" {
+			t.Errorf("match at %v, then %v showing %q", before, after, textAt(after))
+		}
+		p.closeSearch()
 	})
 }

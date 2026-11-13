@@ -362,6 +362,15 @@ func (p *Pane) updateGridSize() {
 	p.T.CellW, p.T.CellH = int(float64(cw)/p.dpr), int(float64(ch)/p.dpr)
 	p.T.Mu.Unlock()
 	p.S.Resize(cols, rows, cols*cw, rows*ch)
+	// Rewrapping moved the text the matches point at: find them again,
+	// keeping to the same one.
+	if p.view.Matches != nil {
+		current := p.view.Current
+		p.runSearch(false)
+		if current >= 0 && current < len(p.view.Matches) {
+			p.view.Current = current
+		}
+	}
 	p.GL.Update()
 }
 

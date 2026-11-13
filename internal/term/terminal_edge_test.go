@@ -116,3 +116,103 @@ func TestWordAtLinkAtOutside(t *testing.T) {
 		}
 	}
 }
+
+// TestParseColorForms checks every X11 colour form termite takes, and
+// some it refuses.
+func TestParseColorForms(t *testing.T) {
+	for in, want := range map[string]uint32{
+		"rgb:f/0/8":          0xff0088,
+		"rgb:ff/00/80":       0xff0080,
+		"rgb:fff/000/800":    0xff007f,
+		"rgb:ffff/0000/8000": 0xff007f,
+		"#f08":               0xff0088,
+		"#ff0080":            0xff0080,
+		"#fff000800":         0xff0080,
+		"#ffff00008000":      0xff0080,
+		"  #102030 ":         0x102030,
+	} {
+		if got, ok := ParseColor(in); !ok || got != want {
+			t.Errorf("%q: %06x %v, want %06x", in, got, ok, want)
+		}
+	}
+	for _, bad := range []string{"", "#12", "#1234567", "rgb:1/2", "rgb:12345/0/0", "rgb:g/0/0", "red", "#gggggg"} {
+		if got, ok := ParseColor(bad); ok {
+			t.Errorf("%q parsed as %06x", bad, got)
+		}
+	}
+}
+
+// TestOSCColourResets checks that OSC 104 and 110-112 put back the
+// theme's colours a program changed.
+func TestOSCColourResets(t *testing.T) {
+	tm := New(10, 2, 0)
+	tm.SetColors(defaultPalette(), 0x111111, 0x222222, 0x333333)
+	feed(tm, "\x1b]4;1;#010101\x07\x1b]4;2;#020202\x07\x1b]10;#aaaaaa\x07\x1b]11;#bbbbbb\x07\x1b]12;#cccccc\x07")
+	if tm.Palette[1] != 0x010101 || tm.DefaultFg != 0xaaaaaa || tm.DefaultBg != 0xbbbbbb || tm.CursorColor != 0xcccccc {
+		t.Fatal("the colours were not set")
+	}
+	feed(tm, "\x1b]104;1\x07")
+	if tm.Palette[1] != defaultPalette()[1] || tm.Palette[2] != 0x020202 {
+		t.Errorf("OSC 104;1: %06x %06x", tm.Palette[1], tm.Palette[2])
+	}
+	feed(tm, "\x1b]104\x07\x1b]110\x07\x1b]111\x07\x1b]112\x07")
+	if tm.Palette != defaultPalette() || tm.DefaultFg != 0x111111 || tm.DefaultBg != 0x222222 || tm.CursorColor != 0x333333 {
+		t.Errorf("resets: %06x %06x %06x", tm.DefaultFg, tm.DefaultBg, tm.CursorColor)
+	}
+}
+
+// TestXTGETTCAP checks the terminfo capabilities termite answers, in hex,
+// and the reply to one it doesn't know.
+func TestXTGETTCAP(t *testing.T) {
+	tm := New(10, 2, 0)
+	feed(tm, "\x1bP+q544e;436f\x1b\\") // TN;Co
+	if got := string(tm.TakeReplies()); got != "\x1bP1+r544e="+hexEncode("xterm-256color")+";436f="+hexEncode("256")+"\x1b\\" {
+		t.Errorf("%q", got)
+	}
+	feed(tm, "\x1bP+q6e6f7065\x1b\\") // "nope"
+	if got := string(tm.TakeReplies()); got != "\x1bP0+r\x1b\\" {
+		t.Errorf("unknown: %q", got)
+	}
+}
+
+// TestCursorReportOriginMode checks DSR 6 and DECXCPR, which count from
+// the scrolling region's top in origin mode.
+func TestCursorReportOriginMode(t *testing.T) {
+	tm := feed(New(10, 6, 0), "\x1b[3;5r\x1b[?6h\x1b[2;4H\x1b[6n\x1b[?6n")
+	if got := string(tm.TakeReplies()); got != "\x1b[2;4R\x1b[?2;4R" {
+		t.Errorf("%q", got)
+	}
+}
+
+// TestAltScreenRestoresCursor checks that leaving the 1049 screen puts
+// the cursor back where it was on the normal one.
+func TestAltScreenRestoresCursor(t *testing.T) {
+	tm := feed(New(10, 4, 0), "\x1b[3;7H\x1b[?1049h\x1b[1;1Hxyz\x1b[?1049l")
+	expectCursor(t, tm, 6, 2)
+}
+
+// TestTextRangeBlock checks copying a rectangle: each row's part of it,
+// trailing blanks trimmed.
+func TestTextRangeBlock(t *testing.T) {
+	tm := feed(New(10, 3, 0), "abcdef\r\nghijkl\r\nmn")
+	b := tm.buf
+	top := int64(b.Count() - 3)
+	got := b.TextRange(Pos{Line: top, Col: 1}, Pos{Line: top + 2, Col: 4}, true)
+	if got != "bcd\nhij\nn" {
+		t.Errorf("%q", got)
+	}
+}
+
+// TestWordAtAcrossWrap checks that a word soft-wrapped onto the next row
+// is selected whole from either half.
+func TestWordAtAcrossWrap(t *testing.T) {
+	tm := feed(New(6, 3, 0), "ab hello world")
+	b := tm.buf
+	top := int64(b.Count() - 3)
+	for _, p := range []Pos{{Line: top, Col: 4}, {Line: top + 1, Col: 1}} {
+		s, e := b.WordAt(p, "")
+		if s != (Pos{Line: top, Col: 3}) || e != (Pos{Line: top + 1, Col: 2}) {
+			t.Errorf("from %v: %v to %v", p, s, e)
+		}
+	}
+}

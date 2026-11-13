@@ -259,7 +259,11 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Sprintf("unknown theme %q (have %s)", c.Theme, strings.Join(c.ThemeIDs(), ", ")))
 	}
 	for _, id := range c.ThemeIDs() {
-		if _, err := c.Themes[id].Resolve(); err != nil {
+		spec := c.Themes[id]
+		if spec.Name == "" {
+			spec.Name = id // so a problem says which theme
+		}
+		if _, err := spec.Resolve(); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}

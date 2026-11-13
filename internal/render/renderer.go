@@ -315,7 +315,8 @@ func compile(vs, fs string) (uint32, error) {
 			gl.GetShaderiv(s, gl.INFO_LOG_LENGTH, &n)
 			log := strings.Repeat("\x00", int(n+1))
 			gl.GetShaderInfoLog(s, n, nil, gl.Str(log))
-			return 0, fmt.Errorf("shader: %s", log)
+			gl.DeleteShader(s)
+			return 0, fmt.Errorf("shader: %s", strings.TrimRight(log, "\x00"))
 		}
 		return s, nil
 	}
@@ -325,6 +326,7 @@ func compile(vs, fs string) (uint32, error) {
 	}
 	f, err := sh(fs, gl.FRAGMENT_SHADER)
 	if err != nil {
+		gl.DeleteShader(v)
 		return 0, err
 	}
 	p := gl.CreateProgram()
@@ -336,7 +338,12 @@ func compile(vs, fs string) (uint32, error) {
 	var ok int32
 	gl.GetProgramiv(p, gl.LINK_STATUS, &ok)
 	if ok == 0 {
-		return 0, fmt.Errorf("link failed")
+		var n int32
+		gl.GetProgramiv(p, gl.INFO_LOG_LENGTH, &n)
+		log := strings.Repeat("\x00", int(n+1))
+		gl.GetProgramInfoLog(p, n, nil, gl.Str(log))
+		gl.DeleteProgram(p)
+		return 0, fmt.Errorf("link: %s", strings.TrimRight(log, "\x00"))
 	}
 	return p, nil
 }
@@ -824,6 +831,8 @@ func (r *Renderer) Render() {
 				r.buildRow(y)
 			}
 		}
+		// In the same pass: the preedit's glyphs can reset the atlas too.
+		r.buildOverlay()
 		if r.Cache.Gen == gen {
 			break
 		}
@@ -832,7 +841,6 @@ func (r *Renderer) Render() {
 		r.cacheGen = gen
 		r.allDirty = true
 	}
-	r.buildOverlay()
 	r.upload()
 	clear(r.rowDirty)
 	r.allDirty = false

@@ -9,7 +9,7 @@
 # Ubuntu 22.04, with Qt's own build of Qt), as an AppImage runs on systems as
 # new as the one it was built on or newer, not on older ones. It needs Go, a
 # C++ compiler, pkg-config, the Qt 6 development files (Widgets, OpenGL,
-# OpenGLWidgets) with qmake, the OpenGL development files, curl and file.
+# OpenGLWidgets, Svg) with qmake, the OpenGL development files, curl and file.
 # The Qt that pkg-config finds is the one built with, and QMAKE, if set,
 # says which qmake belongs to it. With xvfb-run and Mesa installed, the
 # AppImage is started at the end to check that it runs.
@@ -25,9 +25,12 @@ BUILD="$(mktemp -d "${TMPDIR:-/tmp}/termite-appimage.XXXXXX")"
 trap 'rm -rf "$BUILD"' EXIT
 APPDIR="$BUILD/AppDir"
 TOOLS="$BUILD/tools"
+# The tools downloaded are kept between runs; delete the folder to fetch
+# their latest build again.
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/termite-appimage"
 OUTPUT="Termite-$VERSION-$ARCH.AppImage"
 
-mkdir -p "$TOOLS"
+mkdir -p "$TOOLS" "$CACHE"
 
 echo "Building Termite $VERSION"
 go build -ldflags "-s -w" -o "$BUILD/termite" .
@@ -41,10 +44,12 @@ cp internal/appicon/appicon.png "$BUILD/termite.png"
 # OpenGL itself (libGL, libEGL, the drivers) is deliberately left out by the
 # tool: it has to be the system's, which matches the system's graphics.
 fetch() {
-	if [ ! -x "$TOOLS/$1" ]; then
-		curl -fsSL -o "$TOOLS/$1" "$2"
-		chmod +x "$TOOLS/$1"
+	if [ ! -x "$CACHE/$1" ]; then
+		curl -fsSL -o "$CACHE/$1.part" "$2"
+		chmod +x "$CACHE/$1.part"
+		mv "$CACHE/$1.part" "$CACHE/$1"
 	fi
+	cp "$CACHE/$1" "$TOOLS/$1" # a copy: the tool looks for its plugin beside itself
 }
 fetch "linuxdeploy-$ARCH.AppImage" \
 	"https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$ARCH.AppImage"
@@ -133,8 +138,8 @@ if [ -e "$THEMES/libqgtk3.so" ]; then
 fi
 
 # Without one of these the AppImage would be made, and then not start under
-# X11 or under Wayland, have no GL widget or toolbar icons, or not look like a GTK desktop it
-# is run on, so it is not made at all.
+# X11 or under Wayland, have no GL widget or toolbar icons, or not look like
+# a GTK desktop it is run on, so it is not made at all.
 missing=0
 for file in \
 	plugins/platforms/libqxcb.so \
@@ -154,7 +159,7 @@ for file in \
 done
 # And OpenGL must come from the system: a bundled libGL would load the
 # wrong driver, or none, on most machines.
-for lib in "$APPDIR"/usr/lib/libGL.so* "$APPDIR"/usr/lib/libEGL.so* "$APPDIR"/usr/lib/libGLX*.so*; do
+for lib in "$APPDIR"/usr/lib/libGL.so* "$APPDIR"/usr/lib/libEGL.so* "$APPDIR"/usr/lib/libGLX*.so* "$APPDIR"/usr/lib/libOpenGL.so*; do
 	if [ -e "$lib" ]; then
 		echo "OpenGL library put in the AppImage, which must be the system's: $lib" >&2
 		missing=1

@@ -231,7 +231,9 @@ are added, and the variables the AppImage runtime sets for Termite itself
 
 `make appimage` runs the same script locally. It works in a temporary
 folder outside the project, removed afterwards, and leaves only the
-AppImage in the project folder. An AppImage built on a newer system only
+AppImage in the project folder. The packaging tools it downloads
+(linuxdeploy and its Qt plugin) are kept in `~/.cache/termite-appimage`;
+delete that folder to fetch their latest build. An AppImage built on a newer system only
 runs on systems at least as new.
 
 ## Architecture

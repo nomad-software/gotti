@@ -84,7 +84,9 @@ func formatColor(c uint32) string {
 	return fmt.Sprintf("rgb:%02x%02x/%02x%02x/%02x%02x", r, r, g, g, b, b)
 }
 
-// ParseColor parses an X11 colour spec (rgb:r/g/b or #rrggbb).
+// ParseColor parses an X11 colour spec: rgb:r/g/b with 1 to 4 hex digits
+// each, or #rgb, #rrggbb, #rrrgggbbb or #rrrrggggbbbb (the high digits
+// of each count).
 func ParseColor(s string) (uint32, bool) {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "rgb:") {
@@ -114,6 +116,8 @@ func ParseColor(s string) (uint32, bool) {
 		case 3:
 			h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
 		case 6:
+		case 9:
+			h = h[0:2] + h[3:5] + h[6:8]
 		case 12:
 			h = h[0:2] + h[4:6] + h[8:10]
 		default:

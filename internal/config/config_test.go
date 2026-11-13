@@ -322,3 +322,15 @@ func TestBlackSelectionText(t *testing.T) {
 		t.Error("no selection_text still sets the colour")
 	}
 }
+
+// TestUnnamedThemeError checks that a problem in a theme with no name
+// says which theme by its id.
+func TestUnnamedThemeError(t *testing.T) {
+	c := Default()
+	spec := c.Themes[DefaultTheme]
+	spec.Name, spec.Foreground = "", "not a colour"
+	c.Themes["mine"] = spec
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), `theme "mine"`) {
+		t.Errorf("%v", err)
+	}
+}
