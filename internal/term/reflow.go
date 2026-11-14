@@ -3,22 +3,27 @@ package term
 // Resize returns a new buffer of the given size. When reflow is set the
 // soft-wrapped lines are re-joined and re-split at the new width; the
 // cursor (cx, cy in screen coordinates) is tracked through the reflow and
-// its new position returned.
+// its new position returned. pending is a wrap pending at the cursor (it
+// follows a character in the last column, at cols-1); the result says
+// whether one still is, so the next character does not overwrite the last.
 //
 // Reflow runs twice: a first pass only measures the result (how many
 // lines, where the cursor and the last content land), then a second pass
 // writes the lines that are kept straight into the new ring. Nothing else
 // is allocated, which matters because a window being resized reflows every
 // pane on each step.
-func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, int) {
+func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int, pending bool) (*Buffer, int, int, bool) {
 	if cols < 1 {
 		cols = 1
 	}
 	if rows < 1 {
 		rows = 1
 	}
+	if pending {
+		cx++ // the cursor really follows the character it sits on
+	}
 	if !reflow {
-		return b.resizeClip(cols, rows, cx, cy)
+		return b.resizeClip(cols, rows, cx, cy, pending)
 	}
 	nb := &Buffer{Cols: cols, Rows: rows, maxLines: rows + b.maxLines - b.Rows, Evicted: b.Evicted}
 
@@ -45,8 +50,9 @@ func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int) (*Buffer, int, 
 	nb.allDirty = true
 
 	ncy := clamp(curLine-(total-rows), 0, rows-1)
-	ncx := min(st.curX, cols-1)
-	return nb, ncx, ncy
+	// A cursor past the last column follows a character there: a wrap is
+	// pending.
+	return nb, min(st.curX, cols-1), ncy, st.curX >= cols
 }
 
 // reflowStats describes the output of a reflow pass.
@@ -159,8 +165,9 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 			content = content || isContent(&c)
 			lx += w
 			if k+1 == cursorOff && k == len(para)-1 {
-				// cursor right after the last character
-				st.curLine, st.curX = st.lines, min(lx, cols-1)
+				// cursor right after the last character, cols when that
+				// is in the last column (a pending wrap)
+				st.curLine, st.curX = st.lines, lx
 			}
 		}
 		if cursorOff >= 0 && st.curLine < 0 {
@@ -189,8 +196,9 @@ func contentLen(l []Cell) int {
 	return n
 }
 
-// resizeClip resizes without reflow (used for the alternate screen).
-func (b *Buffer) resizeClip(cols, rows, cx, cy int) (*Buffer, int, int) {
+// resizeClip resizes without reflow (used for the alternate screen). With
+// pending, cx is one past the character the cursor follows.
+func (b *Buffer) resizeClip(cols, rows, cx, cy int, pending bool) (*Buffer, int, int, bool) {
 	nb := NewBuffer(cols, rows, b.maxLines-b.Rows)
 	nb.Evicted = b.Evicted
 	// Keep the cursor row on screen: drop rows from the top if needed.
@@ -207,8 +215,13 @@ func (b *Buffer) resizeClip(cols, rows, cx, cy int) (*Buffer, int, int) {
 		}
 	}
 	cy -= shift
-	if cx >= cols {
-		cx = cols - 1
+	if !pending {
+		return nb, min(cx, cols-1), cy, false
 	}
-	return nb, cx, cy
+	// The character it follows is still in the last column, or was clipped
+	// off; otherwise the cursor moves on to after it.
+	if cx >= cols {
+		return nb, cols - 1, cy, true
+	}
+	return nb, cx, cy, false
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1012,14 +1013,10 @@ func (p *Pane) paste(text string) {
 	p.T.Mu.Unlock()
 	warn := p.app.cfg.PasteWarning
 	if input.IsMultiLine(text) && (warn == "always" || warn == "unbracketed" && !bracketed) {
-		lines := strings.Count(strings.TrimRight(text, "\n"), "\n") + 1
-		msg := fmt.Sprintf("You are pasting %d lines. They may run as commands.\n\nPaste anyway?", lines)
+		msg := fmt.Sprintf("You are pasting %d lines. They may run as commands.\n\nPaste anyway?", input.PasteLines(text))
 		ok := qtwidgets.QMessageBoxQuestion(p.Widget, "Multi-line Paste", msg) == qtwidgets.QMessageBoxYes
-		if p.exited {
-			return
-		}
 		p.refocus()
-		if !ok {
+		if p.exited || !ok {
 			return
 		}
 	}
@@ -1154,7 +1151,15 @@ func (p *Pane) tabTitle() string {
 
 // refocus returns keyboard focus to the pane after a dialog.
 func (p *Pane) refocus() {
-	if p.exited { // it closed while a menu or dialog was open
+	if p.exited {
+		// It closed while a menu or dialog was open. Its neighbour, which
+		// closePane gave the focus, could not take it then, and Qt hands it
+		// back to the closed pane: give it again, if the window is left.
+		if w := p.tab.win; slices.Contains(p.app.windows, w) {
+			if q := w.currentPane(); q != nil && !q.exited {
+				q.refocus()
+			}
+		}
 		return
 	}
 	p.GL.ActivateWindow()

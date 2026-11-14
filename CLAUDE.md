@@ -19,7 +19,11 @@ and architecture.
   need an X display, as offscreen gives no GL
   context: `DISPLAY=:99 go test ./internal/ui` under Xvfb (they skip without
   `DISPLAY`). Also run them with `GOGC=5` after ownership changes. Under
-  `qutetest.TestMain` closing the last window does not quit. Drive the mouse
+  `qutetest.TestMain` closing the last window does not quit Qt, but
+  termite's `App.windowClosed` quits when its own last window goes, which
+  ends the test binary: a test that closes a window keeps another open.
+  Always pass a short `-timeout` (and wrap in `timeout`): a dialog nobody
+  answers hangs until go test's 10 minutes. Drive the mouse
   with `qutetest.Press`/`Move`/`Release`/`Drag`, wait on a condition with
   `qutetest.WaitFor` rather than a loop of `Wait`s, and answer menus and
   dialogs opened by the call under test with `WhenPopup`/`WhenModal`.
@@ -154,8 +158,10 @@ and architecture.
 - Config: `Load` keeps what is valid when a value has the wrong type (only
   a syntax error falls back to the defaults); `normalize` clamps sizes to
   the ranges the Options dialog uses (`config.Min…/Max…`); `Validate`
-  reports unknown key names and actions sharing a chord. Start-up problems
-  reach the pane headers through `NewApp`'s `loadErr`.
+  reports unknown key names and actions sharing a chord. `Load` reports
+  every problem at once, joined by "; " on one line (the pane headers show
+  it). Start-up problems reach the pane headers through `NewApp`'s
+  `loadErr`.
 - Raw syscalls on the PTY (poll, ioctl) go through `Session.rc.Control`,
   never a saved descriptor number: Close may run concurrently and the
   number could be reused.
@@ -172,14 +178,27 @@ and architecture.
 - Menus and dialogs run nested event loops in which a pane (and with its
   last tab, its window) can close and be deleted. qute's static
   `QMessageBox…` functions are safe then (the box is on the heap and
-  answers `NoButton`); check `Alive()` before deleting a menu afterwards,
-  and `p.exited` before using the pane (`refocus` does).
+  answers `NoButton`); check `Alive()` before deleting a menu or dialog
+  afterwards (`showOptions`: the dialog goes with its window), and
+  `p.exited` before using the pane. Call `p.refocus()` after one even if
+  `p` exited: the neighbour `closePane` focused could not take the focus
+  under the modal, and Qt gives it back to the closed pane, so `refocus`
+  passes it to the window's current pane.
+- A pending wrap survives a resize: `Buffer.Resize` takes and returns it
+  (the cursor one past the cell it sits on), or the next character would
+  overwrite the one in the last column.
 - Clear Scrollback goes through `Terminal.ClearScrollback`, which clears
   the primary screen's scrollback: `Buf()` is the alternate screen (with
   none) while a full-screen program runs.
-- Config writes: `config.SetValues` follows a symlinked config file, and
+- Config writes: `config.SetValues` follows a symlinked config file (a
+  dangling one too, creating its target) and keeps the file's mode, and
   `config.WriteSample` (`--write-config`, Edit Config) creates the folder
   of the path it is given, never `config.Dir()` regardless.
 - `DISPLAY` is usually set in the user's shell, so a plain `go test ./...`
   runs the GUI tests on the real display; use `DISPLAY=:99` for Xvfb.
+- Binary size: never call reflect's `Method`/`MethodByName` with a computed
+  name, nor link `text/template` or `html/template` (they do): the linker
+  then keeps every exported qute method and the binary doubles (~23 MB →
+  ~45 MB stripped). `linksize_test.go` checks that no qute `Override` setter
+  is linked (termite calls none); it builds termite, skipped with `-short`.
 - The user handles git; don't commit or suggest commits.

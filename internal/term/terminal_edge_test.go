@@ -241,3 +241,65 @@ func TestWordAtAcrossWrap(t *testing.T) {
 		}
 	}
 }
+
+// TestResizeKeepsPendingWrap checks that a resize leaves a pending wrap
+// pending: the next character goes on the next line instead of over the
+// one in the last column.
+func TestResizeKeepsPendingWrap(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		cols, rows int
+		want       []string
+	}{
+		{"rows only", 10, 4, []string{"0123456789", "A", "", ""}},
+		{"wider", 12, 3, []string{"0123456789A", "", ""}},
+		{"narrower", 5, 3, []string{"01234", "56789", "A"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tm := feed(newT(10, 3), "0123456789")
+			tm.Resize(tc.cols, tc.rows)
+			feed(tm, "A")
+			expectScreen(t, tm, tc.want...)
+		})
+	}
+	// The same on the alternate screen, which is clipped, not reflowed.
+	tm := feed(newT(10, 3), "\x1b[?1049h0123456789")
+	tm.Resize(10, 4)
+	feed(tm, "A")
+	expectScreen(t, tm, "0123456789", "A", "", "")
+}
+
+// TestWidePadClearsOldWide prints a wide character in the last column over
+// the right half of another: the old one must go, not stay half drawn.
+func TestWidePadClearsOldWide(t *testing.T) {
+	tm := feed(newT(10, 3), "aaaaaaaa中\x1b[10G中")
+	wideIntact(t, tm, 0)
+	if l := tm.buf.Line(0); l[8].Attr&AttrWide != 0 {
+		t.Error("the old wide character is still at column 8")
+	}
+	expectScreen(t, tm, "aaaaaaaa", "中", "")
+}
+
+// TestC1Dropped checks that C1 controls arriving as UTF-8 are dropped, as
+// wcwidth gives them -1, rather than joined to the previous character.
+func TestC1Dropped(t *testing.T) {
+	tm := feed(newT(10, 3), "a\xc2\x85b")
+	if got := tm.buf.Line(0)[0].Text(); got != "a" {
+		t.Errorf("cell 0 is %q", got)
+	}
+	expectScreen(t, tm, "ab", "", "")
+}
+
+// TestWordAtAcrossWrapPad selects a word that a wide character's wrap
+// split, leaving a pad in the last column.
+func TestWordAtAcrossWrapPad(t *testing.T) {
+	tm := feed(newT(5, 3), "中中中")
+	b := tm.Buf()
+	top := b.ScreenTopAbs()
+	for _, p := range []Pos{{top, 0}, {top + 1, 0}} {
+		s, e := b.WordAt(p, "")
+		if got := b.TextRange(s, e, false); got != "中中中" {
+			t.Errorf("word at %v: %q", p, got)
+		}
+	}
+}

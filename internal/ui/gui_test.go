@@ -789,6 +789,7 @@ func TestPaneExitsUnderMenu(t *testing.T) {
 		}{
 			{qutetest.WhenPopup, func(p *Pane) { p.showContextMenu(100, 100, nil) }},
 			{qutetest.WhenModal, func(p *Pane) { p.paste("one\ntwo\n") }},
+			{qutetest.WhenModal, func(p *Pane) { p.app.showOptions(p) }},
 		} {
 			a.runAction(focusedPane(t, w), "split_vertical")
 			qutetest.Wait(200)
@@ -809,6 +810,11 @@ func TestPaneExitsUnderMenu(t *testing.T) {
 			if got := len(w.allPanes()); got != n-1 {
 				t.Fatalf("%d panes after one of %d exited", got, n)
 			}
+			// The focus goes to a pane that is left, not back to the closed one.
+			if !qutetest.WaitFor(func() bool { return qtwidgets.QApplicationFocusWidget() != nil }, time.Second) {
+				t.Fatal("no pane has the focus after one exited under a menu or dialog")
+			}
+			focusedPane(t, w)
 		}
 	})
 }
@@ -848,6 +854,33 @@ func TestHeaderKeptAcrossWindowSwitch(t *testing.T) {
 			if got := lit(); !slices.Equal(got, want) {
 				t.Errorf("focus moved to pane %d: %v", 1-i, got)
 			}
+		}
+	})
+}
+
+// TestLastPaneExitsUnderOptions closes the shell of a window's only pane
+// while the Options dialog is open: the window, and the dialog with it, is
+// deleted inside the dialog's event loop, and showOptions must not touch
+// the dialog afterwards.
+func TestLastPaneExitsUnderOptions(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		a, w := newTestApp(t)
+		// Another window keeps the app running (closing its last window
+		// quits), so it is left open, as the other tests leave theirs.
+		a.NewWindow(nil)
+		qutetest.Wait(300)
+		p := w.currentPane()
+		qutetest.WhenModal(t, func(dlg *qtwidgets.QWidget) {
+			p.S.WriteString("exit\r")
+			if !qutetest.WaitFor(func() bool { return !dlg.Alive() }, 5*time.Second) {
+				t.Error("the dialog outlived its window")
+				dlg.Close()
+			}
+		})
+		a.showOptions(p)
+		if !p.exited {
+			t.Error("the pane did not exit")
 		}
 	})
 }

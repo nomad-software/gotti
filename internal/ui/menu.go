@@ -143,6 +143,7 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 		menu.DeleteLater()
 	}
 	if p.exited {
+		p.refocus() // to the pane that took its place
 		return
 	}
 	// Focus goes back to the tab's focused pane, which is a new pane after
@@ -175,7 +176,13 @@ func (p *Pane) contextMenuAtCursor() {
 func (a *App) editConfig(p *Pane) {
 	_ = config.WriteSample(a.cfgPath) // fails harmlessly if it exists
 	if !qtgui.QDesktopServicesOpenUrl(qtcore.QUrlFromLocalFile(a.cfgPath)) {
-		qtwidgets.QMessageBoxInformation(p.Widget, desktop.DisplayName, "Config file: "+a.cfgPath)
+		// p may have closed while the Options dialog was open; the box
+		// then has no parent.
+		var parent qtwidgets.QWidgetLike
+		if !p.exited {
+			parent = p.Widget
+		}
+		qtwidgets.QMessageBoxInformation(parent, desktop.DisplayName, "Config file: "+a.cfgPath)
 		p.refocus()
 	}
 }

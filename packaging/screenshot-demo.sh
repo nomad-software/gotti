@@ -14,7 +14,7 @@ show)
 	printf ' ┌───────────┬──────────┐  ╭────────╮\n'
 	printf ' │ wide 世界 │ emoji 🚀 │  │ ⣿⣿ ▓▒░ │\n'
 	printf ' └───────────┴──────────┘  ╰────────╯\n\n'
-	printf ' \e]8;;https://github.com/mappu/miqt\e\\a hyperlink\e]8;;\e\\  and  https://go.dev\n\n'
+	printf ' \e]8;;https://github.com/nomad-software/qute\e\\a hyperlink\e]8;;\e\\  and  https://go.dev\n\n'
 	;;
 ls)
 	ls --color=always -F

@@ -25,10 +25,19 @@ if [ ! -s "$BIG" ]; then
 fi
 
 DPY=:97
+if [ -e /tmp/.X11-unix/X${DPY#:} ]; then
+	echo "display $DPY is in use" >&2
+	exit 1
+fi
 Xvfb $DPY -screen 0 1920x1200x24 >/dev/null 2>&1 &
 XVFB=$!
-trap 'kill $XVFB' EXIT
+# wait, so that a run straight after this one finds the display free
+trap 'kill $XVFB; wait $XVFB 2>/dev/null' EXIT
 sleep 1
+if ! kill -0 $XVFB 2>/dev/null; then
+	echo "Xvfb did not start on $DPY" >&2
+	exit 1
+fi
 
 term() { # TERMITE_DEBUG value, then termite's arguments
 	local dbg=$1

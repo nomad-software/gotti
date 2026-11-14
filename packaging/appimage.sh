@@ -64,6 +64,10 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 # and libraries come without them, so nothing is lost by leaving it out.
 export NO_STRIP=1
 export QMAKE="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
+if [ -z "$QMAKE" ]; then
+	echo "no qmake6 or qmake found: install Qt's development tools or set QMAKE" >&2
+	exit 1
+fi
 # On a desktop system the folder of Qt's plugins also has those of the
 # desktop (KDE's image formats, theme and style, for one), which would all go
 # into the AppImage with everything they use, and stop it being made if one

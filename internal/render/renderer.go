@@ -610,7 +610,9 @@ func (r *Renderer) buildRow(y int) {
 				fg = r.Style.SelFg
 			}
 		}
-		isCursor := cursorHere && x == r.curX
+		// The cursor may sit on the right half of a wide character
+		// (printf '中\b'), which the loop skips: draw it on the whole.
+		isCursor := cursorHere && (x == r.curX || wcells == 2 && x+1 == r.curX)
 		if isCursor && curStyle == term.CursorBlock && r.view.Focused {
 			bg = r.cursorColor
 			fg = r.Style.CursorText
@@ -753,7 +755,9 @@ func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite
 		match := true
 		for k := 0; k < n; k++ {
 			c := line[x+k]
-			if c.Ch != rune(cand[k]) || c.Attr&term.AttrStyleMask != line[x].Attr&term.AttrStyleMask || c.Fg != line[x].Fg {
+			// A cluster cell's Ch is an index into the cluster table,
+			// which can equal an ASCII character's code.
+			if c.Ch != rune(cand[k]) || c.Attr&term.AttrCluster != 0 || c.Attr&term.AttrStyleMask != line[x].Attr&term.AttrStyleMask || c.Fg != line[x].Fg {
 				match = false
 				break
 			}

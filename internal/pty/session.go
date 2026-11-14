@@ -256,14 +256,17 @@ func (s *Session) Pid() int {
 }
 
 // ForegroundCwd returns the working directory of the PTY's foreground
-// process (falls back to the child's).
+// process group's leader, or the child's when there is none or the leader
+// has exited while its group runs on (cat in "cat big | less").
 func (s *Session) ForegroundCwd() string {
-	pid := s.Pid()
 	if !s.closed.Load() {
 		if pgid := s.foregroundPgid(); pgid > 0 {
-			pid = int(pgid)
+			if dir, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pgid)); err == nil {
+				return dir
+			}
 		}
 	}
+	pid := s.Pid()
 	if pid == 0 {
 		return ""
 	}

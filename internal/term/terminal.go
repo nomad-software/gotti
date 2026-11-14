@@ -258,33 +258,32 @@ func (t *Terminal) Resize(cols, rows int) {
 		return
 	}
 	// Reflow the primary buffer, tracking the cursor that belongs to it.
-	pcx, pcy := t.cur.X, t.cur.Y
+	pc := &t.cur
 	if t.altActive {
-		pcx, pcy = t.savedMain.X, t.savedMain.Y
+		pc = &t.savedMain
 	}
-	np, ncx, ncy := t.primary.Resize(cols, rows, true, pcx, pcy)
+	np, ncx, ncy, npend := t.primary.Resize(cols, rows, true, pc.X, pc.Y, pc.wrapPending)
 	// The alternate screen keeps the row of its own cursor on screen; while
 	// it is inactive it has none, and its top rows are kept.
-	acx, acy := 0, 0
+	acx, acy, apend := 0, 0, false
 	if t.altActive {
-		acx, acy = t.cur.X, t.cur.Y
+		acx, acy, apend = t.cur.X, t.cur.Y, t.cur.wrapPending
 	}
-	na, acx, acy := t.alt.Resize(cols, rows, false, acx, acy)
+	na, acx, acy, apend := t.alt.Resize(cols, rows, false, acx, acy, apend)
 	t.primary, t.alt = np, na
 	if t.altActive {
 		t.buf = na
-		t.cur.X, t.cur.Y = acx, acy
-		t.savedMain.X, t.savedMain.Y = ncx, ncy
+		t.cur.X, t.cur.Y, t.cur.wrapPending = acx, acy, apend
+		t.savedMain.X, t.savedMain.Y, t.savedMain.wrapPending = ncx, ncy, npend
 	} else {
 		t.buf = np
-		t.cur.X, t.cur.Y = ncx, ncy
+		t.cur.X, t.cur.Y, t.cur.wrapPending = ncx, ncy, npend
 	}
 	t.cols, t.rows = cols, rows
 	t.top, t.bot = 0, rows-1
 	oldTabs := t.tabs
 	t.resetTabs()
 	copy(t.tabs, oldTabs)
-	t.cur.wrapPending = false
 	clampSaved := func(c *cursor) {
 		c.X = min(c.X, cols-1)
 		c.Y = min(c.Y, rows-1)
@@ -370,6 +369,9 @@ func (t *Terminal) printRune(r rune) {
 	if r >= 0x5f && r <= 0x7e && t.cur.charsets[t.cur.gl] == csDECGraphics {
 		r = decGraphics[r-0x5f]
 	}
+	if r >= 0x80 && r <= 0x9f {
+		return // C1 controls sent as UTF-8: wcwidth gives -1, so they are dropped, not combined
+	}
 	w := RuneWidth(r)
 	lp := &t.lastPrint
 	// Zero-width characters (combining marks, ZWJ, variation selectors)
@@ -393,6 +395,7 @@ func (t *Terminal) printRune(r rune) {
 	if w == 2 && t.cur.X == t.cols-1 {
 		if t.Autowrap {
 			line := t.buf.Line(t.cur.Y)
+			t.clearWideAt(line, t.cur.X) // the other half of a wide char there
 			pad := t.fill()
 			pad.Attr |= AttrWrapPad
 			line[t.cur.X] = pad

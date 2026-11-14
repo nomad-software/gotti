@@ -94,7 +94,7 @@ func (h *headerLabel) MousePressEvent(ev *qtgui.QMouseEvent) {
 		h.Super().MousePressEvent(ev)
 		return
 	}
-	h.pressAt, h.pressed = ev.GlobalPosition(), true
+	h.pressAt, h.pressed, h.dragged = ev.GlobalPosition(), true, false
 }
 
 // MouseMoveEvent overrides QWidget::mouseMoveEvent.
@@ -105,12 +105,15 @@ func (h *headerLabel) MouseMoveEvent(ev *qtgui.QMouseEvent) {
 	}
 	g := ev.GlobalPosition()
 	if p.tab.dragging != p {
+		if h.dragged { // cancelled (Escape, or a pane closed): not again until the next press
+			return
+		}
 		dx, dy := g.X-h.pressAt.X, g.Y-h.pressAt.Y
 		lim := float64(qtwidgets.QApplicationStartDragDistance())
 		if dx*dx+dy*dy < lim*lim || len(p.tab.Panes()) < 2 {
 			return
 		}
-		p.tab.dragging = p
+		p.tab.dragging, h.dragged = p, true
 		setCursorShape(h, qtcore.ClosedHandCursor)
 	}
 	p.tab.showDropZone(p, g.X, g.Y)

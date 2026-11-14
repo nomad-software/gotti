@@ -28,9 +28,17 @@ cat > "$tmp/config/termite/layouts/demo.json" <<JSON
 JSON
 
 display=:97
+if [ -e /tmp/.X11-unix/X${display#:} ]; then
+	echo "display $display is in use" >&2
+	exit 1
+fi
 Xvfb $display -screen 0 $((width + 40))x$((height + 40))x24 >/dev/null 2>&1 &
 xvfb=$!
 sleep 1
+if ! kill -0 $xvfb 2>/dev/null; then
+	echo "Xvfb did not start on $display" >&2
+	exit 1
+fi
 DISPLAY=$display QT_QPA_PLATFORM=xcb XDG_CONFIG_HOME="$tmp/config" XDG_DATA_HOME="$tmp/data" \
 	TERMITE_NO_DESKTOP_ENTRY=1 ./termite --layout demo >"$tmp/log" 2>&1 &
 termite=$!

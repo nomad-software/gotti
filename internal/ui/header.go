@@ -25,6 +25,7 @@ type headerLabel struct {
 
 	pressAt qtcore.QPointF // where the left button went down, on screen
 	pressed bool           // the left button is down on the header
+	dragged bool           // this press started a drag (which may have been cancelled since)
 }
 
 // ResizeEvent overrides QWidget::resizeEvent.

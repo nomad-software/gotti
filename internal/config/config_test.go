@@ -334,3 +334,95 @@ func TestUnnamedThemeError(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 }
+
+// A config file that is just null loads as the defaults, and writing a
+// setting to it must not panic on the nil map it decodes to.
+func TestSetValuesNullFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte("null\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetValues(path, map[string]any{"padding": 7}); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(path); err != nil || c.Padding != 7 {
+		t.Fatalf("padding %d (%v): want 7", c.Padding, err)
+	}
+}
+
+// A dangling symlink is followed too: the write creates its target and the
+// link stays. The file's permissions are kept.
+func TestSetValuesDanglingLinkAndMode(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dotfiles", "termite.json")
+	link := filepath.Join(dir, "config.json")
+	if err := os.Symlink(filepath.Join("dotfiles", "termite.json"), link); err != nil { // relative
+		t.Fatal(err)
+	}
+	if err := SetValues(link, map[string]any{"padding": 7}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the config file is no longer a symlink (%v)", err)
+	}
+	if err := os.Chmod(real, 0o600); err != nil {
+		t.Fatalf("the link's target was not created: %v", err)
+	}
+	if err := SetValues(link, map[string]any{"padding": 8}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(real); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v (%v): want 0600 kept", st.Mode().Perm(), err)
+	}
+	if _, err := os.Stat(real + ".tmp"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("temporary file left behind (%v)", err)
+	}
+	if c, err := Load(link); err != nil || c.Padding != 8 {
+		t.Fatalf("padding %d (%v): want 8", c.Padding, err)
+	}
+}
+
+// A value of the wrong type does not hide the file's other problems.
+func TestLoadReportsEveryProblem(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"font_size": "big", "theme": "nope", "cursor_style": "x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"font_size", `unknown theme "nope"`, "cursor_style"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q does not mention %s", msg, want)
+		}
+	}
+	if strings.Contains(msg, "\n") {
+		t.Errorf("error %q spans lines; pane headers show one", msg)
+	}
+}
+
+// A font size of 0 means the default size.
+func TestZeroFontSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"font_size": 0}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := Load(path); err != nil || c.FontSize != Default().FontSize {
+		t.Fatalf("font size %v (%v): want %v", c.FontSize, err, Default().FontSize)
+	}
+}
+
+// A relative XDG_CONFIG_HOME is ignored, as the XDG spec says.
+func TestDirIgnoresRelativeXDG(t *testing.T) {
+	t.Setenv("HOME", "/home/someone")
+	t.Setenv("XDG_CONFIG_HOME", "relative/config")
+	if got := Dir(); got != "/home/someone/.config/termite" {
+		t.Errorf("Dir() = %q", got)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "/xdg")
+	if got := Dir(); got != "/xdg/termite" {
+		t.Errorf("Dir() = %q", got)
+	}
+}

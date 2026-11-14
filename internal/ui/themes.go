@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/nomad-software/qute/qtcore"
@@ -277,7 +279,8 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 		if current >= 0 && current < len(ids) {
 			selected = ids[current]
 		}
-		for id, spec := range config.BuiltinThemes {
+		for _, id := range slices.Sorted(maps.Keys(config.BuiltinThemes)) { // the same order each time
+			spec := config.BuiltinThemes[id]
 			if _, ok := specs[id]; !ok {
 				ids = append(ids, id)
 			}

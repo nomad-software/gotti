@@ -123,15 +123,20 @@ func (b *Buffer) WordAt(p Pos, extra string) (Pos, Pos) {
 			continue
 		}
 		pi := b.AbsToLogical(s.Line - 1)
-		if pi < 0 || !b.Wrapped(pi) || !isWordRune(runeAt(b.LogicalLine(pi), b.Cols-1), extra) {
+		if pi < 0 || !b.Wrapped(pi) {
 			break
 		}
-		s = Pos{s.Line - 1, b.Cols - 1}
+		prev := b.LogicalLine(pi)
+		last := lastCol(prev)
+		if !isWordRune(runeAt(prev, last), extra) {
+			break
+		}
+		s = Pos{s.Line - 1, last}
 	}
 	// forwards
 	for {
 		li := b.AbsToLogical(e.Line)
-		if e.Col+1 < b.Cols {
+		if e.Col+1 <= lastCol(b.LogicalLine(li)) {
 			if !isWordRune(runeAt(b.LogicalLine(li), e.Col+1), extra) {
 				break
 			}
@@ -145,6 +150,16 @@ func (b *Buffer) WordAt(p Pos, extra string) (Pos, Pos) {
 		e = Pos{e.Line + 1, 0}
 	}
 	return s, Pos{e.Line, e.Col + 1}
+}
+
+// lastCol returns the last column of a line that holds text: the one
+// before the pad left when a wide character wrapped.
+func lastCol(line []Cell) int {
+	n := len(line) - 1
+	if n > 0 && line[n].Attr&AttrWrapPad != 0 {
+		n--
+	}
+	return n
 }
 
 // LineExtent returns the full logical (soft-wrap joined) line around p.

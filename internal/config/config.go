@@ -143,9 +143,10 @@ func (c *Config) HeaderFont() (family string, size float64) {
 	return family, size
 }
 
-// Dir returns the configuration directory.
+// Dir returns the configuration directory. A relative XDG_CONFIG_HOME is
+// ignored, as the XDG spec says.
 func Dir() string {
-	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
+	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" && filepath.IsAbs(d) {
 		return filepath.Join(d, "termite")
 	}
 	home, _ := os.UserHomeDir()
@@ -197,13 +198,23 @@ func Load(path string) (*Config, error) {
 		strictErr = fmt.Errorf("%s: %w", path, err)
 	}
 	out.normalize()
+	// Every problem is reported at once, on one line (pane headers show
+	// it). A misspelt key waits until the values are valid, as before; the
+	// strict pass's error is dropped when it is the same wrong type again.
+	var problems []string
 	if typeErr != nil {
-		return &out, typeErr
+		problems = append(problems, typeErr.Error())
 	}
+	var te *json.UnmarshalTypeError
 	if err := out.Validate(); err != nil {
-		return &out, err
+		problems = append(problems, err.Error())
+	} else if strictErr != nil && !errors.As(strictErr, &te) {
+		problems = append(problems, strictErr.Error())
 	}
-	return &out, strictErr
+	if len(problems) == 0 {
+		return &out, nil
+	}
+	return &out, errors.New(strings.Join(problems, "; "))
 }
 
 // describeJSONError adds a line number to JSON syntax errors.
@@ -228,7 +239,7 @@ const (
 
 func (c *Config) normalize() {
 	if c.FontSize <= 0 {
-		c.FontSize = 11
+		c.FontSize = Default().FontSize
 	}
 	c.FontSize = min(max(c.FontSize, MinFontSize), MaxFontSize)
 	if c.LineHeight <= 0 {

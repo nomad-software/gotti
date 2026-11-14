@@ -399,9 +399,10 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 		cur = np
 	}
 	// The splitter now holding these panes, found before the nested splits
-	// are built: p may be inside one of them afterwards.
+	// are built: p may be inside one of them afterwards. With no pane but p
+	// started, no splitter was made, and p's parent is an outer one.
 	var level *Node
-	if node := t.root.find(p); node != nil {
+	if node := t.root.find(p); node != nil && slices.ContainsFunc(panes[1:], func(q *Pane) bool { return q != nil }) {
 		level = node.parent
 	}
 	for i, c := range ln.Children {

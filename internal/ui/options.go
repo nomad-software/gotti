@@ -246,10 +246,12 @@ func (a *App) showOptions(p *Pane) {
 	})
 
 	dlg.Exec()
-	dlg.DeleteLater()
-	if !p.exited {
-		p.refocus()
+	// The window, and the dialog with it, is gone if its last pane closed
+	// while the dialog was open.
+	if dlg.Alive() {
+		dlg.DeleteLater()
 	}
+	p.refocus()
 }
 
 // isMonospaced checks whether narrow and wide letters have equal advances.

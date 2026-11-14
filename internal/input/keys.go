@@ -428,7 +428,7 @@ func EncodeMouse(button, action int, x, y int, mods Mods, sgr bool) []byte {
 // wrapped in the paste markers, with any markers inside it removed so that
 // pasted text cannot end the paste early; otherwise newlines become CR.
 func Paste(text string, bracketed bool) []byte {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = normalizeNewlines(text)
 	if bracketed {
 		// Removing a marker can join the text around it into a new one
 		// ("\x1b[20" + marker + "1~"), so remove until none is left.
@@ -451,7 +451,16 @@ func Paste(text string, bracketed bool) []byte {
 	return []byte(clean)
 }
 
-// IsMultiLine reports whether pasting text would submit more than one line.
-func IsMultiLine(text string) bool {
-	return strings.ContainsAny(strings.TrimRight(text, "\r\n"), "\r\n")
+// normalizeNewlines turns CRLF and lone CR (old Mac line endings) into LF.
+func normalizeNewlines(text string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 }
+
+// PasteLines returns how many lines pasting text would submit; trailing
+// newlines don't start another.
+func PasteLines(text string) int {
+	return strings.Count(strings.TrimRight(normalizeNewlines(text), "\n"), "\n") + 1
+}
+
+// IsMultiLine reports whether pasting text would submit more than one line.
+func IsMultiLine(text string) bool { return PasteLines(text) > 1 }

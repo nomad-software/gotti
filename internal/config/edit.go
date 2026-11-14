@@ -15,9 +15,7 @@ import (
 // A symlinked file (one kept with dotfiles, say) is written where the link
 // points, and the link is kept.
 func SetValues(path string, values map[string]any) error {
-	if target, err := filepath.EvalSymlinks(path); err == nil {
-		path = target
-	}
+	path = resolveLink(path)
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		data = SampleConfig()
@@ -28,6 +26,9 @@ func SetValues(path string, values map[string]any) error {
 	if len(bytes.TrimSpace(data)) > 0 {
 		if err := json.Unmarshal(data, &m); err != nil {
 			return fmt.Errorf("%s: %w", path, describeJSONError(data, err))
+		}
+		if m == nil { // the file is just null
+			m = map[string]json.RawMessage{}
 		}
 	}
 	for key, value := range values {
@@ -44,11 +45,42 @@ func SetValues(path string, values map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
+	// Keep the file's permissions (a config kept private stays private).
+	mode := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		mode = fi.Mode().Perm()
+	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, out, 0o644); err != nil {
+	if err := os.WriteFile(tmp, out, mode); err != nil {
+		os.Remove(tmp)
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Chmod(tmp, mode); err != nil { // WriteFile's mode is masked by the umask
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// resolveLink follows path's symlinks to the file they name, which need not
+// exist yet: a dangling link is followed too, so writing creates its target
+// rather than replacing the link.
+func resolveLink(path string) string {
+	for range 40 { // as the kernel's limit on nested links
+		target, err := os.Readlink(path)
+		if err != nil {
+			return path
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(path), target)
+		}
+		path = target
+	}
+	return path
 }
 
 // WriteSample writes the default configuration to path, creating its

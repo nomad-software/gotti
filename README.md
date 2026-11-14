@@ -59,7 +59,7 @@ vim).
 
 The easiest way to get Termite is the AppImage from a release (see
 [AppImage](#appimage) below). To build it yourself, you need: Go 1.27+, Qt 6.12 or newer development files
-(Widgets, OpenGL, OpenGLWidgets), `pkg-config`, OpenGL 3.3 drivers and a C++17
+(Widgets, OpenGL, OpenGLWidgets, Svg), `pkg-config`, OpenGL 3.3 drivers and a C++17
 compiler. Termite runs on Linux only.
 
 ```sh
@@ -247,7 +247,7 @@ test/headless        runs a program through the emulator core and prints the scr
 test/guibench        GUI benchmark workloads and runner (make guibench)
 internal/term        emulator core: cells, scrollback ring, parser, xterm emulation (no GUI deps)
 internal/pty         child process on a PTY; one reader+parser goroutine per pane
-internal/input       key (xterm + kitty), mouse (SGR) and paste encoding
+internal/input       key (xterm + kitty), mouse (SGR and X10) and paste encoding
 internal/render      glyph atlas, procedural box drawing, OpenGL renderer
 internal/qtgl        the terminal's QOpenGLWidget, a Go subclass of qute's
 internal/ui          windows, toolbar, tabs, splits, panes, layouts, actions

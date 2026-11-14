@@ -136,6 +136,16 @@ func TestPaste(t *testing.T) {
 	if !IsMultiLine("a\nb") || IsMultiLine("ab\n") {
 		t.Error("multiline detection")
 	}
+	// A lone CR (old Mac line endings) is a line break too, not a control
+	// character to strip, and the warning counts the lines it makes.
+	if got := string(Paste("a\rb", false)); got != "a\rb" {
+		t.Errorf("lone CR: %q", got)
+	}
+	for text, want := range map[string]int{"ab": 1, "ab\r\n": 1, "a\rb": 2, "a\r\nb\rc\n": 3} {
+		if got := PasteLines(text); got != want {
+			t.Errorf("PasteLines(%q) = %d, want %d", text, got, want)
+		}
+	}
 }
 
 // TestPasteCannotEscapeBrackets pastes text built so that removing a paste

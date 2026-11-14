@@ -130,6 +130,12 @@ func TestDragPane(t *testing.T) {
 					t.Error("no drop zone while dragging")
 				}
 				qutetest.Key(focusedPane(t, w).GL, qtcore.Key_Escape, qtcore.NoModifier)
+				// Moving on with the button still held must not start it again.
+				lx, ly := mapToGlobal(c.drag.header, 0, 0)
+				qutetest.Move(c.drag.header, qtcore.QPoint{X: int(x) - lx + 3, Y: int(y) - ly + 3})
+				if tab.dragging != nil || tab.dropZone.IsVisible() {
+					t.Error("the drag started again after Escape")
+				}
 			})
 			if got := layoutShape(tab.root, num); got != before || tab.dropZone.IsVisible() {
 				t.Fatalf("dragging %c then Escape: %s, drop zone %v", 'A'+num[c.drag], got, tab.dropZone.IsVisible())
